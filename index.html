@@ -112,7 +112,7 @@
   .tablewrap { overflow: auto; padding: 0 0 12px; margin: 0 24px; }
   #maintable { flex: 1 1 auto; min-height: 0; }
   #watchsection .tablewrap { max-height: 35vh; }
-  table { border-collapse: collapse; width: 100%; min-width: 1710px; max-width: 2124px; table-layout: fixed; }
+  table { border-collapse: collapse; width: 100%; min-width: 1820px; max-width: 2234px; table-layout: fixed; }
   th, td { padding: 9px 12px; text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   th:first-child, td:first-child, th:nth-child(2), td:nth-child(2) { text-align: left; }
   thead th {
@@ -221,7 +221,7 @@
   <div class="sectiontitle">★ Watchlist</div>
   <div class="tablewrap"><table>
     <colgroup>
-      <col style="width:34px"><col style="width:85px"><col><col style="width:70px"><col style="width:85px"><col style="width:85px"><col style="width:90px"><col style="width:65px"><col style="width:65px"><col style="width:90px"><col style="width:110px"><col style="width:125px"><col style="width:70px"><col style="width:110px"><col style="width:75px"><col style="width:75px"><col style="width:75px"><col style="width:75px"><col style="width:140px">
+      <col style="width:34px"><col style="width:85px"><col><col style="width:70px"><col style="width:85px"><col style="width:85px"><col style="width:90px"><col style="width:65px"><col style="width:65px"><col style="width:90px"><col style="width:110px"><col style="width:125px"><col style="width:70px"><col style="width:110px"><col style="width:75px"><col style="width:75px"><col style="width:75px"><col style="width:75px"><col style="width:110px"><col style="width:140px">
     </colgroup>
     <thead><tr id="watchhead"></tr></thead>
     <tbody id="watchrows"></tbody>
@@ -230,7 +230,7 @@
 </div>
 <div class="tablewrap" id="maintable"><table>
   <colgroup>
-    <col style="width:34px"><col style="width:85px"><col><col style="width:70px"><col style="width:85px"><col style="width:85px"><col style="width:90px"><col style="width:65px"><col style="width:65px"><col style="width:90px"><col style="width:110px"><col style="width:125px"><col style="width:70px"><col style="width:110px"><col style="width:75px"><col style="width:75px"><col style="width:75px"><col style="width:75px"><col style="width:140px">
+    <col style="width:34px"><col style="width:85px"><col><col style="width:70px"><col style="width:85px"><col style="width:85px"><col style="width:90px"><col style="width:65px"><col style="width:65px"><col style="width:90px"><col style="width:110px"><col style="width:125px"><col style="width:70px"><col style="width:110px"><col style="width:75px"><col style="width:75px"><col style="width:75px"><col style="width:75px"><col style="width:110px"><col style="width:140px">
   </colgroup>
   <thead><tr id="headrow"></tr></thead>
   <tbody id="rows"></tbody>
@@ -269,6 +269,7 @@ const COLUMNS = [
   { key: "wacc",        label: "WACC",     sort: r => r.wacc ?? -Infinity, numeric: true },
   { key: "spread",      label: "ROIC−WACC", sort: r => (r.roic != null && r.wacc != null) ? r.roic - r.wacc : -Infinity, numeric: true },
   { key: "roe",         label: "ROE",      sort: r => r.roe ?? -Infinity, numeric: true },
+  { key: "sent",        label: "Sentiment", sort: r => r.analystRating == null ? -Infinity : -r.analystRating, numeric: true },
   { key: "sector",      label: "Sector",   sort: r => r.sector || "" },
 ];
 
@@ -369,6 +370,26 @@ function spreadCell(r) {
   const v = r.roic - r.wacc;
   const cls = v < 0 ? "fail" : v <= 5 ? "warn" : "pass";
   return `<td class="${cls}" title="${title}">${(v >= 0 ? "+" : "") + v.toFixed(1)}%</td>`;
+}
+
+const RATING_LABEL = {
+  strong_buy: "Strong buy", buy: "Buy", hold: "Hold",
+  underperform: "Underperf.", sell: "Sell",
+};
+
+function sentCell(r) {
+  const label = RATING_LABEL[r.analystKey];
+  if (r.analystRating == null || !label) return `<td class="na">–</td>`;
+  const cls = r.analystRating < 2.5 ? "pass" : r.analystRating <= 3.5 ? "warn" : "fail";
+  const upside = r.targetUpside != null
+    ? ` · ${r.targetUpside >= 0 ? "+" : ""}${r.targetUpside.toFixed(0)}%` : "";
+  const parts = [];
+  if (r.analystCount) parts.push(`${r.analystCount} analysts, mean rating ${r.analystRating.toFixed(1)} (1=strong buy, 5=sell)`);
+  if (r.targetUpside != null) parts.push(`mean 12m price target ${r.targetUpside >= 0 ? "+" : ""}${r.targetUpside}% vs current price`);
+  if (r.vs200d != null) parts.push(`price ${r.vs200d >= 0 ? "+" : ""}${r.vs200d}% vs 200-day average`);
+  if (r.shortPct != null) parts.push(`short interest ${r.shortPct}% of float`);
+  if (r.upgrades3m != null) parts.push(`last 3m: ${r.upgrades3m} upgrades, ${r.downgrades3m} downgrades`);
+  return `<td class="${cls}" title="${escAttr(parts.join(" · "))}">${label}${upside}</td>`;
 }
 
 function pfcfCell(r) {
@@ -490,6 +511,7 @@ function buildRow(r) {
     `<td class="na" title="Estimated via CAPM: cost of equity = 10y US Treasury + beta × 5% equity risk premium (+4% country premium for Turkey); cost of debt = interest expense ÷ total debt, after tax; weighted by market cap vs debt. An approximation - compare with ROIC.">${r.wacc == null ? "–" : r.wacc.toFixed(1) + "%"}</td>` +
     spreadCell(r) +
     `<td class="na" title="Yahoo: trailing net income ÷ shareholders' equity">${r.roe == null ? "–" : r.roe.toFixed(1) + "%"}</td>` +
+    sentCell(r) +
     `<td class="na">${r.sector || "–"}</td>`;
   return tr;
 }

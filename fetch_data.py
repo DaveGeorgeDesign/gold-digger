@@ -225,6 +225,36 @@ def statement_value(df, row_names):
         return None, None, None
 
 
+def sentiment_fields(t, info, price):
+    """Analyst consensus, target upside, momentum and positioning signals."""
+    s = {
+        "analystRating": info.get("recommendationMean"),
+        "analystKey": info.get("recommendationKey"),
+        "analystCount": info.get("numberOfAnalystOpinions"),
+        "targetUpside": None, "vs200d": None, "shortPct": None,
+        "upgrades3m": None, "downgrades3m": None,
+    }
+    tgt = info.get("targetMeanPrice")
+    if tgt and price:
+        s["targetUpside"] = round((tgt - price) / price * 100, 1)
+    d200 = info.get("twoHundredDayAverage")
+    if price and d200:
+        s["vs200d"] = round((price - d200) / d200 * 100, 1)
+    short = info.get("shortPercentOfFloat")
+    if short is not None:
+        s["shortPct"] = round(short * 100, 1)
+    try:
+        ud = t.upgrades_downgrades
+        if ud is not None and not ud.empty and "Action" in ud.columns:
+            idx = ud.index.tz_localize(None) if ud.index.tz is not None else ud.index
+            recent = ud[idx >= dt.datetime.now() - dt.timedelta(days=90)]
+            s["upgrades3m"] = int((recent["Action"] == "up").sum())
+            s["downgrades3m"] = int((recent["Action"] == "down").sum())
+    except Exception:
+        pass
+    return s
+
+
 def screen_ticker(symbol):
     t = yf.Ticker(symbol)
     info = t.info
@@ -391,6 +421,7 @@ def screen_ticker(symbol):
         "currency": info.get("currency"),
         "price": info.get("currentPrice") or info.get("regularMarketPrice"),
         "wkLow": info.get("fiftyTwoWeekLow"),
+        **sentiment_fields(t, info, info.get("currentPrice") or info.get("regularMarketPrice")),
         "mcapUsd": round(mcap_usd) if mcap_usd else None,
         "pe": round(pe, 2) if pe is not None else None,
         "peg": round(peg, 2) if peg is not None else None,
