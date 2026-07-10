@@ -1,0 +1,606 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gold Digger</title>
+<style>
+  :root {
+    --bg: #0e1117;
+    --panel: #171c26;
+    --panel2: #1e2430;
+    --border: #2a3242;
+    --text: #e6e9ef;
+    --muted: #8b94a7;
+    --green: #2fbf71;
+    --green-bg: rgba(47, 191, 113, 0.14);
+    --red: #e5534b;
+    --red-bg: rgba(229, 83, 75, 0.12);
+    --amber: #d4a72c;
+    --accent: #4c8dff;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  header, .controls, .criteria-bar, .summary, #watchsection { flex-shrink: 0; }
+  header {
+    padding: 20px 24px 14px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: baseline;
+    gap: 14px;
+    flex-wrap: wrap;
+  }
+  header h1 { margin: 0; font-size: 19px; font-weight: 650; }
+  header .meta { color: var(--muted); font-size: 12.5px; }
+  .controls {
+    display: flex;
+    gap: 10px;
+    padding: 14px 24px;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+  .controls select, .controls input[type="search"] {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: 8px;
+    padding: 7px 10px;
+    font-size: 13px;
+  }
+  .controls input[type="search"] { width: 200px; }
+  .toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 7px 12px;
+    cursor: pointer;
+    font-size: 13px;
+    user-select: none;
+  }
+  .toggle input { accent-color: var(--green); }
+  #refreshbtn {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: 8px;
+    padding: 7px 12px;
+    font-size: 13px;
+    cursor: pointer;
+  }
+  #refreshbtn:hover:not(:disabled) { border-color: var(--accent); }
+  #refreshbtn:disabled { color: var(--muted); cursor: default; }
+  #refreshpill {
+    font-size: 12.5px;
+    color: var(--amber);
+    padding: 7px 4px;
+  }
+  .criteria-bar {
+    display: flex;
+    gap: 8px;
+    padding: 0 24px 14px;
+    flex-wrap: wrap;
+  }
+  .crit-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    padding: 5px 10px;
+    border-radius: 20px;
+    border: 1px solid var(--border);
+    background: var(--panel);
+    color: var(--muted);
+    cursor: pointer;
+    user-select: none;
+  }
+  .crit-chip.on { border-color: var(--accent); color: var(--text); background: rgba(76, 141, 255, 0.1); }
+  .crit-chip input { display: none; }
+  .summary { padding: 0 24px 10px; color: var(--muted); font-size: 13px; }
+  .summary b { color: var(--text); }
+  .tablewrap { overflow: auto; padding: 0 0 12px; margin: 0 24px; }
+  #maintable { flex: 1 1 auto; min-height: 0; }
+  #watchsection .tablewrap { max-height: 35vh; }
+  table { border-collapse: collapse; width: 100%; min-width: 1710px; max-width: 2124px; table-layout: fixed; }
+  th, td { padding: 9px 12px; text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  th:first-child, td:first-child, th:nth-child(2), td:nth-child(2) { text-align: left; }
+  thead th {
+    position: sticky;
+    top: 0;
+    background: var(--bg);
+    color: var(--muted);
+    font-size: 11.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    border-bottom: 1px solid var(--border);
+    cursor: pointer;
+    user-select: none;
+    z-index: 2;
+  }
+  thead th:hover { color: var(--text); }
+  /* pin star + ticker columns during horizontal scroll */
+  th:first-child, td:first-child { position: sticky; left: 0; }
+  th:nth-child(2), td:nth-child(2) { position: sticky; left: 34px; border-right: 1px solid var(--border); }
+  thead th:nth-child(-n+2) { z-index: 3; }
+  tbody td:nth-child(-n+2) { background: var(--bg); z-index: 1; }
+  tbody tr:hover td:nth-child(-n+2) { background: var(--panel); }
+  tbody tr.allpass td:nth-child(-n+2) { background: #101a1c; }
+  tbody tr.allpass:hover td:nth-child(-n+2) { background: #112220; }
+  thead th .arrow { font-size: 9px; margin-left: 3px; }
+  tbody tr { border-bottom: 1px solid rgba(42, 50, 66, 0.5); }
+  tbody tr:hover { background: var(--panel); }
+  tbody tr.allpass { background: rgba(47, 191, 113, 0.05); }
+  tbody tr.allpass:hover { background: rgba(47, 191, 113, 0.1); }
+  .sym { font-weight: 650; }
+  .name { color: var(--muted); font-size: 12px; }
+  .flag { font-size: 11px; color: var(--muted); margin-left: 6px; }
+  td.pass { color: var(--green); background: var(--green-bg); }
+  td.fail { color: var(--red); background: var(--red-bg); }
+  td.warn { color: var(--amber); background: rgba(212, 167, 44, 0.12); }
+  td.computed { font-style: italic; cursor: help; }
+  td.na { color: var(--muted); }
+  .score {
+    display: inline-block;
+    min-width: 34px;
+    text-align: center;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-weight: 650;
+    font-size: 12px;
+  }
+  .score.s7 { background: var(--green); color: #08130c; }
+  .score.s6 { background: var(--green-bg); color: var(--green); }
+  .score.s5 { background: rgba(212, 167, 44, 0.15); color: var(--amber); }
+  .score.slow { background: var(--panel2); color: var(--muted); }
+  .empty { padding: 60px 24px; text-align: center; color: var(--muted); }
+  .sectiontitle {
+    padding: 6px 24px 8px;
+    font-size: 13px;
+    font-weight: 650;
+    color: var(--amber);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  #watchsection .sectiontitle:last-of-type { color: var(--muted); margin-top: 8px; }
+  #watchsection .tablewrap { padding-bottom: 8px; }
+  td.watchcell, th.watchcell { text-align: center; width: 34px; padding: 9px 6px; }
+  input.watch {
+    appearance: none;
+    width: 16px;
+    height: 16px;
+    cursor: pointer;
+    position: relative;
+  }
+  input.watch::before {
+    content: "☆";
+    color: var(--muted);
+    font-size: 15px;
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+  }
+  input.watch:checked::before { content: "★"; color: var(--amber); }
+</style>
+</head>
+<body>
+<header>
+  <h1>⛏ Gold Digger</h1>
+  <span class="meta" id="meta"></span>
+</header>
+
+<div class="controls">
+  <input type="search" id="search" placeholder="Search ticker or name…">
+  <select id="country"><option value="">All countries</option></select>
+  <select id="exchange">
+    <option value="">All exchanges</option>
+    <option value="US">US (NYSE/NASDAQ)</option>
+    <option value="LSE">UK (LSE)</option>
+    <option value="BIST">Turkey (BIST)</option>
+  </select>
+  <select id="index"><option value="">All indices</option></select>
+  <select id="sector"><option value="">All sectors</option></select>
+  <label class="toggle"><input type="checkbox" id="onlypass" checked> Only stocks passing all criteria</label>
+  <button id="refreshbtn" style="display:none">Refresh now</button>
+  <span id="refreshpill" style="display:none"></span>
+</div>
+
+<div class="criteria-bar" id="critbar"></div>
+<div class="summary" id="summary"></div>
+<div id="watchsection" style="display:none">
+  <div class="sectiontitle">★ Watchlist</div>
+  <div class="tablewrap"><table>
+    <colgroup>
+      <col style="width:34px"><col style="width:85px"><col><col style="width:70px"><col style="width:85px"><col style="width:85px"><col style="width:90px"><col style="width:65px"><col style="width:65px"><col style="width:90px"><col style="width:110px"><col style="width:125px"><col style="width:70px"><col style="width:110px"><col style="width:75px"><col style="width:75px"><col style="width:75px"><col style="width:75px"><col style="width:140px">
+    </colgroup>
+    <thead><tr id="watchhead"></tr></thead>
+    <tbody id="watchrows"></tbody>
+  </table></div>
+  <div class="sectiontitle">All stocks</div>
+</div>
+<div class="tablewrap" id="maintable"><table>
+  <colgroup>
+    <col style="width:34px"><col style="width:85px"><col><col style="width:70px"><col style="width:85px"><col style="width:85px"><col style="width:90px"><col style="width:65px"><col style="width:65px"><col style="width:90px"><col style="width:110px"><col style="width:125px"><col style="width:70px"><col style="width:110px"><col style="width:75px"><col style="width:75px"><col style="width:75px"><col style="width:75px"><col style="width:140px">
+  </colgroup>
+  <thead><tr id="headrow"></tr></thead>
+  <tbody id="rows"></tbody>
+</table></div>
+<div class="empty" id="empty" style="display:none">No stocks match the current filters.</div>
+
+<script src="data.js"></script>
+<script>
+const CRITERIA = [
+  { key: "mcap",     label: "Mkt cap > $2bn" },
+  { key: "pe",       label: "P/E < 12" },
+  { key: "peg",      label: "PEG < 1" },
+  { key: "shares",   label: "Shares shrinking (5y)" },
+  { key: "dividend", label: "Dividend growing (if paid)" },
+  { key: "debt",     label: "Debt < 3yr net profit" },
+  { key: "pfcf",     label: "P/FCF < 10" },
+  { key: "rev",      label: "Revenue growing (5y)" },
+];
+
+const COLUMNS = [
+  { key: "watch",       label: "★", noSort: true },
+  { key: "symbol",      label: "Ticker",   sort: r => r.symbol },
+  { key: "name",        label: "Company",  sort: r => r.name },
+  { key: "score",       label: "Score",    sort: r => r.passCount, numeric: true },
+  { key: "price",       label: "Price",    sort: r => r.price ?? -1, numeric: true },
+  { key: "wklow",       label: "52wk low", sort: r => r.wkLow ?? -1, numeric: true },
+  { key: "mcap",        label: "Mkt cap",  sort: r => r.mcapUsd ?? -1, numeric: true },
+  { key: "pe",          label: "P/E",      sort: r => r.pe ?? Infinity, numeric: true },
+  { key: "peg",         label: "PEG",      sort: r => r.peg ?? Infinity, numeric: true },
+  { key: "shares",      label: "Shares 5y", sort: r => r.sharesPct5y ?? Infinity, numeric: true },
+  { key: "dividend",    label: "Div growth /yr", sort: r => divCagr(r) ?? -Infinity, numeric: true },
+  { key: "debt",        label: "Debt (yrs profit)", sort: r => r.debtYears ?? Infinity, numeric: true },
+  { key: "pfcf",        label: "P/FCF",    sort: r => r.pFcf ?? Infinity, numeric: true },
+  { key: "rev",         label: "Rev growth /yr", sort: r => r.revCagr ?? -Infinity, numeric: true },
+  { key: "roic",        label: "ROIC",     sort: r => r.roic ?? -Infinity, numeric: true },
+  { key: "wacc",        label: "WACC",     sort: r => r.wacc ?? -Infinity, numeric: true },
+  { key: "spread",      label: "ROIC−WACC", sort: r => (r.roic != null && r.wacc != null) ? r.roic - r.wacc : -Infinity, numeric: true },
+  { key: "roe",         label: "ROE",      sort: r => r.roe ?? -Infinity, numeric: true },
+  { key: "sector",      label: "Sector",   sort: r => r.sector || "" },
+];
+
+let activeCriteria = new Set(CRITERIA.map(c => c.key));
+let sortKey = "score", sortDir = -1;
+
+const $ = id => document.getElementById(id);
+
+function fmtMcap(v) {
+  if (v == null) return "–";
+  if (v >= 1e12) return "$" + (v / 1e12).toFixed(2) + "tn";
+  if (v >= 1e9) return "$" + (v / 1e9).toFixed(1) + "bn";
+  return "$" + (v / 1e6).toFixed(0) + "m";
+}
+const fmt = v => v == null ? "–" : v.toLocaleString(undefined, { maximumFractionDigits: 2 });
+
+const CCY = { USD: ["$", ""], GBp: ["", "p"], GBP: ["£", ""], TRY: ["₺", ""], EUR: ["€", ""] };
+function fmtPrice(v, currency) {
+  if (v == null) return "–";
+  const [pre, post] = CCY[currency] || ["", " " + (currency || "")];
+  return pre + v.toLocaleString(undefined, { maximumFractionDigits: 2 }) + post;
+}
+
+function flagFor(r) {
+  if (r.exchange === "LSE") return "🇬🇧";
+  if (r.exchange === "BIST") return "🇹🇷";
+  if (r.country === "United States") return "🇺🇸";
+  return r.country ? "🌍" : "";
+}
+
+function divCagr(r) {
+  const years = Object.keys(r.divYears || {}).map(Number).sort((a, b) => a - b);
+  if (years.length < 2) return null;
+  const first = r.divYears[years[0]], last = r.divYears[years[years.length - 1]];
+  if (!first || first <= 0) return null;
+  return (Math.pow(last / first, 1 / (years.length - 1)) - 1) * 100;
+}
+
+function divLabel(r) {
+  if (r.divStatus === "none") return "N/A";
+  const cagr = divCagr(r);
+  if (cagr == null) return "0%";
+  return (cagr >= 0 ? "+" : "") + cagr.toFixed(1) + "%";
+}
+
+function divTitle(r) {
+  if (r.divStatus === "none") return "";
+  const years = Object.keys(r.divYears || {}).map(Number).sort((a, b) => a - b);
+  if (!years.length) return "";
+  return years.map(y => `${y}: ${r.divYears[y]}`).join(", ");
+}
+
+function peCell(r) {
+  const note = noteFor(r, "pe");
+  const mark = note ? "*" : "";
+  const title = note ? ` title="${escAttr(note)}"` : "";
+  if (!activeCriteria.has("pe")) return `<td class="na${note ? " computed" : ""}"${title}>${fmt(r.pe)}${mark}</td>`;
+  const v = r.pe;
+  const cls = (v == null || v >= 30 ? "fail" : v < 10 ? "pass" : "warn") + (note ? " computed" : "");
+  return `<td class="${cls}"${title}>${fmt(v)}${mark}</td>`;
+}
+
+function divCell(r) {
+  if (!activeCriteria.has("dividend")) return `<td class="na">${divLabel(r)}</td>`;
+  if (r.divStatus === "none") return `<td class="pass">N/A</td>`;
+  const cagr = divCagr(r);
+  const cls = cagr == null || cagr < 0 ? "fail" : cagr <= 10 ? "warn" : "pass";
+  const title = divTitle(r);
+  return `<td class="${cls}"${title ? ` title="${title}"` : ""}>${divLabel(r)}</td>`;
+}
+
+function pegCell(r) {
+  const note = noteFor(r, "peg");
+  const v = r.peg;
+  const band = v == null || v > 1.5 ? "fail" : v < 1 ? "pass" : "warn";
+  const cls = (!activeCriteria.has("peg") ? "na" : band) + (note ? " computed" : "");
+  return `<td class="${cls}"${note ? ` title="${escAttr(note)}"` : ""}>${fmt(v)}${note ? "*" : ""}</td>`;
+}
+
+function priceCell(r) {
+  const nearLow = r.price != null && r.wkLow != null && r.wkLow > 0 && r.price <= r.wkLow * 1.05;
+  if (!nearLow) return `<td class="na">${fmtPrice(r.price, r.currency)}</td>`;
+  const pct = ((r.price - r.wkLow) / r.wkLow * 100).toFixed(1);
+  return `<td class="pass" title="Within 5% of the 52-week low (${pct}% above)">${fmtPrice(r.price, r.currency)}</td>`;
+}
+
+function roicCell(r) {
+  const title = "Computed: EBIT × (1 − effective tax rate) ÷ invested capital, latest FY. Blank for banks/financials with no EBIT.";
+  const v = r.roic;
+  if (v == null) return `<td class="na" title="${title}">–</td>`;
+  const cls = v < 5 ? "fail" : v < 20 ? "warn" : "pass";
+  return `<td class="${cls}" title="${title}">${v.toFixed(1)}%</td>`;
+}
+
+function spreadCell(r) {
+  const title = "ROIC minus estimated WACC - positive means returns exceed the cost of capital";
+  if (r.roic == null || r.wacc == null) return `<td class="na" title="${title}">–</td>`;
+  const v = r.roic - r.wacc;
+  const cls = v < 0 ? "fail" : v <= 5 ? "warn" : "pass";
+  return `<td class="${cls}" title="${title}">${(v >= 0 ? "+" : "") + v.toFixed(1)}%</td>`;
+}
+
+function pfcfCell(r) {
+  const note = noteFor(r, "pfcf");
+  const mark = note ? "*" : "";
+  const title = note ? ` title="${escAttr(note)}"` : "";
+  if (!activeCriteria.has("pfcf")) return `<td class="na${note ? " computed" : ""}"${title}>${fmt(r.pFcf)}${mark}</td>`;
+  const v = r.pFcf;
+  const cls = (v == null ? "fail" : v < 10 ? "pass" : v <= 15 ? "warn" : "fail") + (note ? " computed" : "");
+  return `<td class="${cls}"${title}>${fmt(v)}${mark}</td>`;
+}
+
+function revCell(r) {
+  const note = noteFor(r, "rev");
+  const mark = note ? "*" : "";
+  const computedCls = note ? " computed" : "";
+  const text = r.revCagr == null ? "–" : (r.revCagr >= 0 ? "+" : "") + r.revCagr.toFixed(1) + "%" + mark;
+  const title = note || (r.revSpan ? `annualised over ${r.revSpan}y (Yahoo's available statements)` : "");
+  const titleAttr = title ? ` title="${escAttr(title)}"` : "";
+  if (!activeCriteria.has("rev")) return `<td class="na${computedCls}"${titleAttr}>${text}</td>`;
+  if (r.revCagr == null) return `<td class="fail">–</td>`;
+  const cls = (r.revCagr < 0 ? "fail" : r.revCagr <= 20 ? "warn" : "pass") + computedCls;
+  return `<td class="${cls}"${titleAttr}>${text}</td>`;
+}
+
+function noteFor(r, key) {
+  return (r.notes && r.notes[key]) || null;
+}
+function escAttr(s) {
+  return s.replace(/"/g, "&quot;");
+}
+
+function passOf(r, key) {
+  // rev is computed here (not in data.js) so it works on any data vintage
+  if (key === "rev") return r.revCagr != null && r.revCagr > 0;
+  return r.passes[key];
+}
+function effectivePass(r) {
+  return [...activeCriteria].every(k => passOf(r, k));
+}
+function effectiveCount(r) {
+  return [...activeCriteria].filter(k => passOf(r, k)).length;
+}
+
+function initFilters() {
+  const stocks = STOCK_DATA.stocks;
+  const countries = [...new Set(stocks.map(r => r.country).filter(Boolean))].sort();
+  for (const c of countries) $("country").add(new Option(c, c));
+  const sectors = [...new Set(stocks.map(r => r.sector).filter(Boolean))].sort();
+  for (const s of sectors) $("sector").add(new Option(s, s));
+  const indices = [...new Set(stocks.map(r => r.index).filter(Boolean))].sort();
+  for (const ix of indices) $("index").add(new Option(ix, ix));
+
+  const bar = $("critbar");
+  for (const c of CRITERIA) {
+    const chip = document.createElement("label");
+    chip.className = "crit-chip on";
+    chip.innerHTML = `<input type="checkbox" checked> ${c.label}`;
+    chip.querySelector("input").addEventListener("change", e => {
+      e.target.checked ? activeCriteria.add(c.key) : activeCriteria.delete(c.key);
+      chip.classList.toggle("on", e.target.checked);
+      render();
+    });
+    bar.appendChild(chip);
+  }
+}
+
+function buildHeader(rowId) {
+  const tr = $(rowId);
+  tr.innerHTML = "";
+  for (const col of COLUMNS) {
+    const th = document.createElement("th");
+    th.textContent = col.label;
+    if (col.key === "watch") th.className = "watchcell";
+    if (col.noSort) { tr.appendChild(th); continue; }
+    if (col.key === sortKey) th.innerHTML += `<span class="arrow">${sortDir > 0 ? "▲" : "▼"}</span>`;
+    th.addEventListener("click", () => {
+      if (sortKey === col.key) sortDir *= -1;
+      else { sortKey = col.key; sortDir = col.numeric ? -1 : 1; }
+      render();
+    });
+    tr.appendChild(th);
+  }
+}
+
+const watched = new Set(JSON.parse(localStorage.getItem("screener-watchlist") || "[]"));
+function saveWatched() {
+  localStorage.setItem("screener-watchlist", JSON.stringify([...watched]));
+}
+
+function buildRow(r) {
+  const tr = document.createElement("tr");
+  if (effectivePass(r)) tr.className = "allpass";
+  const n = effectiveCount(r), total = activeCriteria.size;
+  const scoreCls = n === total ? "s7" : n >= total - 1 ? "s6" : n >= total - 2 ? "s5" : "slow";
+  const cell = (key, text, title) => {
+    const on = activeCriteria.has(key);
+    const note = noteFor(r, key);
+    const cls = (!on ? "na" : passOf(r, key) ? "pass" : "fail") + (note ? " computed" : "");
+    const t = title || note;
+    return `<td class="${cls}"${t ? ` title="${escAttr(t)}"` : ""}>${text}${note ? "*" : ""}</td>`;
+  };
+  tr.innerHTML =
+    `<td class="watchcell"><input type="checkbox" class="watch" data-sym="${r.symbol}"${watched.has(r.symbol) ? " checked" : ""} title="Add to watchlist"></td>` +
+    `<td class="sym">${r.symbol}<span class="flag">${flagFor(r)}</span></td>` +
+    `<td class="name" title="${r.name || ""}">${r.name || ""}</td>` +
+    `<td><span class="score ${scoreCls}">${n}/${total}</span></td>` +
+    priceCell(r) +
+    `<td class="na">${fmtPrice(r.wkLow, r.currency)}</td>` +
+    cell("mcap", fmtMcap(r.mcapUsd)) +
+    peCell(r) +
+    pegCell(r) +
+    cell("shares", r.sharesPct5y == null ? "–" : (r.sharesPct5y > 0 ? "+" : "") + r.sharesPct5y.toFixed(1) + "%") +
+    divCell(r) +
+    cell("debt", fmt(r.debtYears)) +
+    pfcfCell(r) +
+    revCell(r) +
+    roicCell(r) +
+    `<td class="na" title="Estimated via CAPM: cost of equity = 10y US Treasury + beta × 5% equity risk premium (+4% country premium for Turkey); cost of debt = interest expense ÷ total debt, after tax; weighted by market cap vs debt. An approximation - compare with ROIC.">${r.wacc == null ? "–" : r.wacc.toFixed(1) + "%"}</td>` +
+    spreadCell(r) +
+    `<td class="na" title="Yahoo: trailing net income ÷ shareholders' equity">${r.roe == null ? "–" : r.roe.toFixed(1) + "%"}</td>` +
+    `<td class="na">${r.sector || "–"}</td>`;
+  return tr;
+}
+
+function render() {
+  buildHeader("headrow");
+  const q = $("search").value.trim().toLowerCase();
+  const country = $("country").value;
+  const exchange = $("exchange").value;
+  const index = $("index").value;
+  const sector = $("sector").value;
+  const onlyPass = $("onlypass").checked;
+
+  let rows = STOCK_DATA.stocks.filter(r =>
+    (!q || r.symbol.toLowerCase().includes(q) || (r.name || "").toLowerCase().includes(q)) &&
+    (!country || r.country === country) &&
+    (!exchange || r.exchange === exchange) &&
+    (!index || r.index === index) &&
+    (!sector || r.sector === sector) &&
+    (!onlyPass || effectivePass(r))
+  );
+
+  const col = COLUMNS.find(c => c.key === sortKey);
+  rows.sort((a, b) => {
+    const va = col.key === "score" ? effectiveCount(a) : col.sort(a);
+    const vb = col.key === "score" ? effectiveCount(b) : col.sort(b);
+    return (va < vb ? -1 : va > vb ? 1 : 0) * sortDir;
+  });
+
+  const nPass = STOCK_DATA.stocks.filter(effectivePass).length;
+  $("summary").innerHTML =
+    `<b>${nPass}</b> of ${STOCK_DATA.stocks.length} screened stocks pass all ` +
+    `${activeCriteria.size} active criteria · showing <b>${rows.length}</b>` +
+    (watched.size ? ` · <b>${watched.size}</b> watched` : "");
+
+  const tbody = $("rows");
+  tbody.innerHTML = "";
+  for (const r of rows) tbody.appendChild(buildRow(r));
+  $("empty").style.display = rows.length ? "none" : "";
+
+  const watchRows = STOCK_DATA.stocks.filter(r => watched.has(r.symbol));
+  watchRows.sort((a, b) => {
+    const va = col.key === "score" ? effectiveCount(a) : col.sort(a);
+    const vb = col.key === "score" ? effectiveCount(b) : col.sort(b);
+    return (va < vb ? -1 : va > vb ? 1 : 0) * sortDir;
+  });
+  $("watchsection").style.display = watchRows.length ? "" : "none";
+  if (watchRows.length) {
+    buildHeader("watchhead");
+    const wbody = $("watchrows");
+    wbody.innerHTML = "";
+    for (const r of watchRows) wbody.appendChild(buildRow(r));
+  }
+}
+
+document.addEventListener("change", e => {
+  if (!e.target.classList.contains("watch")) return;
+  const sym = e.target.dataset.sym;
+  e.target.checked ? watched.add(sym) : watched.delete(sym);
+  saveWatched();
+  render();
+});
+
+const indexLabel = [...new Set(STOCK_DATA.stocks.map(r => r.index).filter(Boolean))]
+  .sort().join(" · ") || "S&P 500 + FTSE";
+$("meta").textContent =
+  `${STOCK_DATA.stocks.length} stocks · ${indexLabel} · updated ${STOCK_DATA.generated}`;
+const ageDays = (Date.now() - new Date(STOCK_DATA.generated.replace(" ", "T"))) / 864e5;
+if (ageDays > 2) {
+  const warn = document.createElement("span");
+  warn.className = "meta";
+  warn.style.color = "var(--amber)";
+  warn.textContent = `⚠ data is ${Math.floor(ageDays)} days old`;
+  $("meta").after(warn);
+}
+
+// auto-refresh status (only when served by serve.py; hidden on static hosting)
+let wasRefreshing = false, pollTimer = null;
+async function pollStatus() {
+  clearTimeout(pollTimer);
+  let s;
+  try {
+    s = await (await fetch("/api/status")).json();
+  } catch {
+    return; // static server - no refresh support
+  }
+  $("refreshbtn").style.display = "";
+  if (s.refreshing) {
+    wasRefreshing = true;
+    $("refreshbtn").disabled = true;
+    $("refreshpill").style.display = "";
+    $("refreshpill").textContent =
+      "Refreshing data…" + (s.progress ? ` ${s.progress}` : "");
+    pollTimer = setTimeout(pollStatus, 8000);
+  } else {
+    $("refreshbtn").disabled = false;
+    $("refreshpill").style.display = "none";
+    if (wasRefreshing) location.reload();
+    else pollTimer = setTimeout(pollStatus, 60000);
+  }
+}
+$("refreshbtn").addEventListener("click", async () => {
+  await fetch("/api/refresh", { method: "POST" });
+  pollStatus();
+});
+pollStatus();
+initFilters();
+$("onlypass").checked = false;
+["search", "country", "exchange", "index", "sector", "onlypass"].forEach(id =>
+  $(id).addEventListener("input", render));
+render();
+</script>
+</body>
+</html>

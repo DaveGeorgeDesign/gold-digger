@@ -1,0 +1,6 @@
+fetch.log
+refresh.log
+site/
+__pycache__/
+.DS_Store
+*.tmp
