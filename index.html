@@ -248,6 +248,7 @@ const CRITERIA = [
   { key: "debt",     label: "Debt < 3yr net profit" },
   { key: "pfcf",     label: "P/FCF < 10" },
   { key: "rev",      label: "Revenue growing (5y)" },
+  { key: "spread",   label: "ROIC > WACC" },
 ];
 
 const COLUMNS = [
@@ -366,10 +367,15 @@ function roicCell(r) {
 
 function spreadCell(r) {
   const title = "ROIC minus estimated WACC - positive means returns exceed the cost of capital";
-  if (r.roic == null || r.wacc == null) return `<td class="na" title="${title}">–</td>`;
+  const on = activeCriteria.has("spread");
+  if (r.roic == null || r.wacc == null) {
+    return `<td class="${on ? "fail" : "na"}" title="${title}">–</td>`;
+  }
   const v = r.roic - r.wacc;
+  const text = (v >= 0 ? "+" : "") + v.toFixed(1) + "%";
+  if (!on) return `<td class="na" title="${title}">${text}</td>`;
   const cls = v < 0 ? "fail" : v <= 5 ? "warn" : "pass";
-  return `<td class="${cls}" title="${title}">${(v >= 0 ? "+" : "") + v.toFixed(1)}%</td>`;
+  return `<td class="${cls}" title="${title}">${text}</td>`;
 }
 
 const RATING_LABEL = {
@@ -423,8 +429,9 @@ function escAttr(s) {
 }
 
 function passOf(r, key) {
-  // rev is computed here (not in data.js) so it works on any data vintage
+  // rev and spread are computed here (not in data.js) so they work on any data vintage
   if (key === "rev") return r.revCagr != null && r.revCagr > 0;
+  if (key === "spread") return r.roic != null && r.wacc != null && r.roic - r.wacc > 0;
   return r.passes[key];
 }
 function effectivePass(r) {
