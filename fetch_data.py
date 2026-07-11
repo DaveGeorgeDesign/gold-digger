@@ -275,6 +275,13 @@ def screen_ticker(symbol):
         inc = None
 
     net_income = info.get("netIncomeToCommon")
+    ni_note = None
+    if net_income is None:
+        net_income, ni_fy, _ = statement_value(
+            inc, ("Net Income Common Stockholders", "Net Income"))
+        if net_income is not None:
+            ni_note = (f"Net income taken from the FY{ni_fy} income statement - "
+                       f"Yahoo's summary field is missing.")
 
     pe = info.get("trailingPE")
     if pe is None and mcap_usd and fin_fx and net_income and net_income > 0:
@@ -317,6 +324,8 @@ def screen_ticker(symbol):
     debt_years = None
     if net_income and net_income > 0 and debt is not None:
         debt_years = debt / net_income
+    if ni_note:
+        notes["debt"] = (notes.get("debt", "") + " " + ni_note).strip()
 
     fcf = info.get("freeCashflow")
     if not fcf or fcf <= 0:
