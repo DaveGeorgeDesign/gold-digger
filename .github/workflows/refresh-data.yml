@@ -30,5 +30,9 @@ jobs:
           git add data.js
           git diff --cached --quiet && echo "No data changes" || {
             git commit -m "Daily data refresh"
-            git push
+            # main may have moved during the ~25 min screen; rebase our data
+            # commit on top, keeping our fresh data.js if it conflicts
+            git fetch origin main
+            git rebase -X theirs origin/main
+            git push origin main
           }
