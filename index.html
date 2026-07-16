@@ -368,6 +368,9 @@ function roicCell(r) {
 function spreadCell(r) {
   const title = "ROIC minus estimated WACC - positive means returns exceed the cost of capital";
   const on = activeCriteria.has("spread");
+  if (spreadExempt(r)) {
+    return `<td class="${on ? "pass" : "na"}" title="ROIC is undefined for banks and similar financials (no EBIT), so this criterion is N/A - judge them on ROE instead">N/A</td>`;
+  }
   if (r.roic == null || r.wacc == null) {
     return `<td class="${on ? "fail" : "na"}" title="${title}">–</td>`;
   }
@@ -428,10 +431,18 @@ function escAttr(s) {
   return s.replace(/"/g, "&quot;");
 }
 
+function spreadExempt(r) {
+  // ROIC is undefined for banks (no EBIT) - N/A rather than a fail
+  return (r.roic == null || r.wacc == null) && r.sector === "Financial Services";
+}
+
 function passOf(r, key) {
   // rev and spread are computed here (not in data.js) so they work on any data vintage
   if (key === "rev") return r.revCagr != null && r.revCagr > 0;
-  if (key === "spread") return r.roic != null && r.wacc != null && r.roic - r.wacc > 0;
+  if (key === "spread") {
+    if (spreadExempt(r)) return true;
+    return r.roic != null && r.wacc != null && r.roic - r.wacc > 0;
+  }
   return r.passes[key];
 }
 function effectivePass(r) {
