@@ -252,26 +252,45 @@ const CRITERIA = [
 ];
 
 const COLUMNS = [
-  { key: "watch",       label: "★", noSort: true },
-  { key: "symbol",      label: "Ticker",   sort: r => r.symbol },
+  { key: "watch",       label: "★", noSort: true,
+    tip: "Watchlist - starred stocks appear in their own table above, saved in this browser" },
+  { key: "symbol",      label: "Ticker",   sort: r => r.symbol,
+    tip: "Exchange ticker (.L = London, .IS = Istanbul)" },
   { key: "name",        label: "Company",  sort: r => r.name },
-  { key: "score",       label: "Score",    sort: r => r.passCount, numeric: true },
-  { key: "price",       label: "Price",    sort: r => r.price ?? -1, numeric: true },
-  { key: "wklow",       label: "52wk low", sort: r => r.wkLow ?? -1, numeric: true },
-  { key: "mcap",        label: "Mkt cap",  sort: r => r.mcapUsd ?? -1, numeric: true },
-  { key: "pe",          label: "P/E",      sort: r => r.pe ?? Infinity, numeric: true },
-  { key: "peg",         label: "PEG",      sort: r => r.peg ?? Infinity, numeric: true },
-  { key: "shares",      label: "Shares 5y", sort: r => r.sharesPct5y ?? Infinity, numeric: true },
-  { key: "dividend",    label: "Div growth /yr", sort: r => divCagr(r) ?? -Infinity, numeric: true },
-  { key: "debt",        label: "Debt (yrs profit)", sort: r => r.debtYears ?? Infinity, numeric: true },
-  { key: "pfcf",        label: "P/FCF",    sort: r => r.pFcf ?? Infinity, numeric: true },
-  { key: "rev",         label: "Rev growth /yr", sort: r => r.revCagr ?? -Infinity, numeric: true },
-  { key: "roic",        label: "ROIC",     sort: r => r.roic ?? -Infinity, numeric: true },
-  { key: "wacc",        label: "WACC",     sort: r => r.wacc ?? -Infinity, numeric: true },
-  { key: "spread",      label: "ROIC−WACC", sort: r => (r.roic != null && r.wacc != null) ? r.roic - r.wacc : -Infinity, numeric: true },
-  { key: "roe",         label: "ROE",      sort: r => r.roe ?? -Infinity, numeric: true },
-  { key: "sent",        label: "Sentiment", sort: r => r.analystRating == null ? -Infinity : -r.analystRating, numeric: true },
-  { key: "sector",      label: "Sector",   sort: r => r.sector || "" },
+  { key: "score",       label: "Score",    sort: r => r.passCount, numeric: true,
+    tip: "Criteria passed out of those applicable. Banks are scored out of fewer - ROIC-based rules are N/A for them. Toggle the chips above to change which criteria count." },
+  { key: "price",       label: "Price",    sort: r => r.price ?? -1, numeric: true,
+    tip: "Latest price in the listing currency. Green = within 5% of the 52-week low." },
+  { key: "wklow",       label: "52wk low", sort: r => r.wkLow ?? -1, numeric: true,
+    tip: "Lowest price over the past 52 weeks" },
+  { key: "mcap",        label: "Mkt cap",  sort: r => r.mcapUsd ?? -1, numeric: true,
+    tip: "Market capitalisation, converted to USD. Criterion: over $2bn." },
+  { key: "pe",          label: "P/E",      sort: r => r.pe ?? Infinity, numeric: true,
+    tip: "Price ÷ trailing 12-month earnings. Criterion: under 12. Colours: under 10 green, 10-30 amber, 30+ red. * = computed from statements where Yahoo has no figure." },
+  { key: "peg",         label: "PEG",      sort: r => r.peg ?? Infinity, numeric: true,
+    tip: "P/E ÷ expected earnings growth - under 1 suggests the price hasn't caught up with growth. Criterion: under 1. Colours: under 1 green, 1-1.5 amber, over 1.5 red. * = computed from trailing growth where Yahoo has no analyst consensus." },
+  { key: "shares",      label: "Shares 5y", sort: r => r.sharesPct5y ?? Infinity, numeric: true,
+    tip: "Change in shares outstanding over ~5 years, split-adjusted. Negative = buybacks shrinking the share count. Criterion: declining." },
+  { key: "dividend",    label: "Div growth /yr", sort: r => divCagr(r) ?? -Infinity, numeric: true,
+    tip: "Dividend per share growth (CAGR) over the last 5 complete years. Criterion: growing, or no dividend at all (N/A). Colours: negative red, 0-10% amber, over 10% green. Hover a cell for the year-by-year payouts." },
+  { key: "debt",        label: "Debt (yrs profit)", sort: r => r.debtYears ?? Infinity, numeric: true,
+    tip: "Total debt ÷ annual net income - how many years of profit would repay all debt. Criterion: under 3." },
+  { key: "pfcf",        label: "P/FCF",    sort: r => r.pFcf ?? Infinity, numeric: true,
+    tip: "Market cap ÷ free cash flow - like P/E but on actual cash generated. Criterion: under 10. Colours: under 10 green, 10-15 amber, over 15 red." },
+  { key: "rev",         label: "Rev growth /yr", sort: r => r.revCagr ?? -Infinity, numeric: true,
+    tip: "Revenue growth (CAGR) over Yahoo's available statements, typically 3-4 years. Criterion: positive. Colours: negative red, 0-20% amber, over 20% green." },
+  { key: "roic",        label: "ROIC",     sort: r => r.roic ?? -Infinity, numeric: true,
+    tip: "Return on invested capital: after-tax operating profit ÷ all capital invested. Measures how productively the business uses money. Colours: under 5% red, 5-20% amber, 20%+ green. N/A for banks (no EBIT)." },
+  { key: "wacc",        label: "WACC",     sort: r => r.wacc ?? -Infinity, numeric: true,
+    tip: "Estimated weighted average cost of capital (CAPM) - the hurdle rate ROIC must beat for the business to create value. An approximation; hover cells for the assumptions." },
+  { key: "spread",      label: "ROIC−WACC", sort: r => (r.roic != null && r.wacc != null) ? r.roic - r.wacc : -Infinity, numeric: true,
+    tip: "The value-creation spread: returns minus cost of capital. Positive = compounding value. Criterion: positive. Colours: negative red, 0-5 amber, over 5 green. N/A for banks and excluded from their score." },
+  { key: "roe",         label: "ROE",      sort: r => r.roe ?? -Infinity, numeric: true,
+    tip: "Return on equity: net income ÷ shareholders' equity. The return metric that works for banks. Can be inflated by heavy buybacks or leverage." },
+  { key: "sent",        label: "Sentiment", sort: r => r.analystRating == null ? -Infinity : -r.analystRating, numeric: true,
+    tip: "Analyst consensus rating plus 12-month price-target upside. Green = buy consensus, amber = hold, red = underperform/sell. Hover a cell for analyst count, momentum, short interest and rating changes. Informational - not scored." },
+  { key: "sector",      label: "Sector",   sort: r => r.sector || "",
+    tip: "Yahoo's sector classification" },
 ];
 
 let activeCriteria = new Set(CRITERIA.map(c => c.key));
@@ -494,6 +513,7 @@ function buildHeader(rowId) {
   for (const col of COLUMNS) {
     const th = document.createElement("th");
     th.textContent = col.label;
+    if (col.tip) th.title = col.tip;
     if (col.key === "watch") th.className = "watchcell";
     if (col.noSort) { tr.appendChild(th); continue; }
     if (col.key === sortKey) th.innerHTML += `<span class="arrow">${sortDir > 0 ? "▲" : "▼"}</span>`;
