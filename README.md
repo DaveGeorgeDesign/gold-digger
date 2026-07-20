@@ -13,7 +13,8 @@ that can't be honestly approximated (e.g. growth from a loss-making base year)
 stay as "–".
 4. Shares in issue declined over the last 5 years (split-adjusted)
 5. If paying a dividend, the dividend grew over the last 5 complete years (no dividend = pass)
-6. Total debt less than 3 years' net profit
+6. Net debt (total debt minus cash) less than 3 years' free cash flow
+   (a net cash position passes automatically)
 7. Price to free cash flow under 10
 
 All values are normalised to USD for the market cap and P/FCF checks. Data comes

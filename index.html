@@ -245,7 +245,7 @@ const CRITERIA = [
   { key: "peg",      label: "PEG < 1" },
   { key: "shares",   label: "Shares shrinking (5y)" },
   { key: "dividend", label: "Dividend growing (if paid)" },
-  { key: "debt",     label: "Debt < 3yr net profit" },
+  { key: "debt",     label: "Net debt < 3yr FCF" },
   { key: "pfcf",     label: "P/FCF < 10" },
   { key: "rev",      label: "Revenue growing (5y)" },
   { key: "spread",   label: "ROIC > WACC" },
@@ -273,8 +273,8 @@ const COLUMNS = [
     tip: "Change in shares outstanding over ~5 years, split-adjusted. Negative = buybacks shrinking the share count. Criterion: declining." },
   { key: "dividend",    label: "Div growth /yr", sort: r => divCagr(r) ?? -Infinity, numeric: true,
     tip: "Dividend per share growth (CAGR) over the last 5 complete years. Criterion: growing, or no dividend at all (N/A). Colours: negative red, 0-10% amber, over 10% green. Hover a cell for the year-by-year payouts." },
-  { key: "debt",        label: "Debt (yrs profit)", sort: r => r.debtYears ?? Infinity, numeric: true,
-    tip: "Total debt ÷ annual net income - how many years of profit would repay all debt. Criterion: under 3." },
+  { key: "debt",        label: "Net debt / FCF", sort: r => r.netDebtFcf ?? (r.netCash ? -999 : Infinity), numeric: true,
+    tip: "Net debt (total debt minus cash) ÷ free cash flow - years of cash generation to pay off all debt. \"net cash\" = more cash than debt. Criterion: under 3 (net cash passes)." },
   { key: "pfcf",        label: "P/FCF",    sort: r => r.pFcf ?? Infinity, numeric: true,
     tip: "Market cap ÷ free cash flow - like P/E but on actual cash generated. Criterion: under 10. Colours: under 10 green, 10-15 amber, over 15 red." },
   { key: "rev",         label: "Rev growth /yr", sort: r => r.revCagr ?? -Infinity, numeric: true,
@@ -423,6 +423,14 @@ function sentCell(r) {
   return `<td class="${cls}" title="${escAttr(parts.join(" · "))}">${label}${upside}</td>`;
 }
 
+function debtCell(r) {
+  const note = noteFor(r, "debt");
+  const on = activeCriteria.has("debt");
+  const cls = (!on ? "na" : passOf(r, "debt") ? "pass" : "fail") + (note ? " computed" : "");
+  const text = r.netCash ? "net cash" : r.netDebtFcf != null ? fmt(r.netDebtFcf) : "–";
+  return `<td class="${cls}"${note ? ` title="${escAttr(note)}"` : ""}>${text}${note ? "*" : ""}</td>`;
+}
+
 function pfcfCell(r) {
   const note = noteFor(r, "pfcf");
   const mark = note ? "*" : "";
@@ -559,7 +567,7 @@ function buildRow(r) {
     pegCell(r) +
     cell("shares", r.sharesPct5y == null ? "–" : (r.sharesPct5y > 0 ? "+" : "") + r.sharesPct5y.toFixed(1) + "%") +
     divCell(r) +
-    cell("debt", fmt(r.debtYears)) +
+    debtCell(r) +
     pfcfCell(r) +
     revCell(r) +
     roicCell(r) +

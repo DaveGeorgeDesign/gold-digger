@@ -275,13 +275,9 @@ def screen_ticker(symbol):
         inc = None
 
     net_income = info.get("netIncomeToCommon")
-    ni_note = None
     if net_income is None:
-        net_income, ni_fy, _ = statement_value(
-            inc, ("Net Income Common Stockholders", "Net Income"))
-        if net_income is not None:
-            ni_note = (f"Net income taken from the FY{ni_fy} income statement - "
-                       f"Yahoo's summary field is missing.")
+        net_income = statement_value(
+            inc, ("Net Income Common Stockholders", "Net Income"))[0]
 
     pe = info.get("trailingPE")
     if pe is None and mcap_usd and fin_fx and net_income and net_income > 0:
@@ -321,11 +317,13 @@ def screen_ticker(symbol):
         if debt is not None:
             notes["debt"] = (f"Total debt taken from the FY{debt_fy} balance sheet - "
                              f"Yahoo's summary field is missing.")
-    debt_years = None
-    if net_income and net_income > 0 and debt is not None:
-        debt_years = debt / net_income
-    if ni_note:
-        notes["debt"] = (notes.get("debt", "") + " " + ni_note).strip()
+    cash = info.get("totalCash")
+    if cash is None:
+        cash = statement_value(bs, ("Cash And Cash Equivalents",))[0]
+        if cash is None and debt is not None:
+            notes["debt"] = (notes.get("debt", "") +
+                             " No cash figure available - gross debt used.").strip()
+    net_debt = debt - (cash or 0) if debt is not None else None
 
     fcf = info.get("freeCashflow")
     if not fcf or fcf <= 0:
@@ -347,6 +345,12 @@ def screen_ticker(symbol):
     p_fcf = None
     if fcf and fcf > 0 and mcap_usd and fin_fx:
         p_fcf = mcap_usd / (fcf * fin_fx)
+
+    # net debt / FCF: years of free cash flow to pay off all debt
+    net_cash = net_debt is not None and net_debt <= 0
+    nd_fcf = None
+    if net_debt is not None and fcf and fcf > 0:
+        nd_fcf = net_debt / fcf
 
     shares_pct = shares_change_5y(t)
     if shares_pct is None:
@@ -416,7 +420,7 @@ def screen_ticker(symbol):
         "peg": peg is not None and 0 < peg < 1,
         "shares": shares_pct is not None and shares_pct < 0,
         "dividend": div_status in ("none", "growing"),
-        "debt": debt_years is not None and debt_years < 3,
+        "debt": net_cash or (nd_fcf is not None and nd_fcf < 3),
         "pfcf": p_fcf is not None and p_fcf < 10,
     }
 
@@ -438,7 +442,8 @@ def screen_ticker(symbol):
         "sharesPct5y": round(shares_pct, 1) if shares_pct is not None else None,
         "divStatus": div_status,
         "divYears": div_years,
-        "debtYears": round(debt_years, 2) if debt_years is not None else None,
+        "netDebtFcf": round(nd_fcf, 2) if nd_fcf is not None else None,
+        "netCash": net_cash,
         "pFcf": round(p_fcf, 2) if p_fcf is not None else None,
         "revCagr": round(rev_cagr, 1) if rev_cagr is not None else None,
         "revSpan": rev_span,
