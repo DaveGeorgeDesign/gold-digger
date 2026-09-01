@@ -352,6 +352,19 @@ def screen_ticker(symbol):
     if net_debt is not None and fcf and fcf > 0:
         nd_fcf = net_debt / fcf
 
+    # closed-end investment trusts: asset managers with (almost) no employees.
+    # NAV proxied by book value per share from the last reported balance sheet.
+    employees = info.get("fullTimeEmployees")
+    is_trust = (info.get("industry") == "Asset Management"
+                and (employees is None or employees < 100))
+    nav_disc = None
+    if is_trust:
+        bv = info.get("bookValue")
+        px = info.get("currentPrice") or info.get("regularMarketPrice")
+        if bv and bv > 0 and px and price_fx and fin_fx:
+            px_major = px / 100 if info.get("currency") == "GBp" else px
+            nav_disc = (px_major * price_fx - bv * fin_fx) / (bv * fin_fx) * 100
+
     shares_pct = shares_change_5y(t)
     if shares_pct is None:
         for row_name in ("Diluted Average Shares", "Basic Average Shares"):
@@ -444,6 +457,8 @@ def screen_ticker(symbol):
         "divYears": div_years,
         "netDebtFcf": round(nd_fcf, 2) if nd_fcf is not None else None,
         "netCash": net_cash,
+        "isTrust": is_trust,
+        "navDisc": round(nav_disc, 1) if nav_disc is not None else None,
         "pFcf": round(p_fcf, 2) if p_fcf is not None else None,
         "revCagr": round(rev_cagr, 1) if rev_cagr is not None else None,
         "revSpan": rev_span,
