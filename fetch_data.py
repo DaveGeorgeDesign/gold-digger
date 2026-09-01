@@ -8,6 +8,7 @@ Usage:
 """
 import argparse
 import datetime as dt
+import re
 import json
 import os
 import sys
@@ -355,8 +356,11 @@ def screen_ticker(symbol):
     # closed-end investment trusts: asset managers with (almost) no employees.
     # NAV proxied by book value per share from the last reported balance sheet.
     employees = info.get("fullTimeEmployees")
-    is_trust = (info.get("industry") == "Asset Management"
-                and (employees is None or employees < 100))
+    trust_name = info.get("longName") or name
+    is_trust = ((employees is None or employees < 100)
+                and (info.get("industry") == "Asset Management"
+                     or (info.get("sector") == "Financial Services"
+                         and re.search(r"\btrust\b", trust_name, re.I) is not None)))
     nav_disc = None
     if is_trust:
         bv = info.get("bookValue")
