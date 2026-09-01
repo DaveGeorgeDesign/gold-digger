@@ -112,7 +112,7 @@
   .tablewrap { overflow: auto; padding: 0 0 12px; margin: 0 24px; }
   #maintable { flex: 1 1 auto; min-height: 0; }
   #watchsection .tablewrap { max-height: 35vh; }
-  table { border-collapse: collapse; width: 100%; min-width: 1820px; max-width: 2234px; table-layout: fixed; }
+  table { border-collapse: collapse; width: 100%; min-width: 1910px; max-width: 2324px; table-layout: fixed; }
   th, td { padding: 9px 12px; text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   th:first-child, td:first-child, th:nth-child(2), td:nth-child(2) { text-align: left; }
   thead th {
@@ -211,6 +211,7 @@
   <select id="index"><option value="">All indices</option></select>
   <select id="sector"><option value="">All sectors</option></select>
   <label class="toggle"><input type="checkbox" id="onlypass" checked> Only stocks passing all criteria</label>
+  <label class="toggle" title="Closed-end investment trusts pass value screens artificially - their earnings are portfolio gains, so P/E and growth ratios don't mean what they do for operating companies"><input type="checkbox" id="hideit" checked> Hide investment trusts</label>
   <button id="refreshbtn" style="display:none">Refresh now</button>
   <span id="refreshpill" style="display:none"></span>
 </div>
@@ -221,7 +222,7 @@
   <div class="sectiontitle">★ Watchlist</div>
   <div class="tablewrap"><table>
     <colgroup>
-      <col style="width:34px"><col style="width:85px"><col><col style="width:70px"><col style="width:85px"><col style="width:85px"><col style="width:90px"><col style="width:65px"><col style="width:65px"><col style="width:90px"><col style="width:110px"><col style="width:125px"><col style="width:70px"><col style="width:110px"><col style="width:75px"><col style="width:75px"><col style="width:75px"><col style="width:75px"><col style="width:110px"><col style="width:140px">
+      <col style="width:34px"><col style="width:85px"><col><col style="width:70px"><col style="width:85px"><col style="width:85px"><col style="width:90px"><col style="width:65px"><col style="width:65px"><col style="width:90px"><col style="width:110px"><col style="width:125px"><col style="width:70px"><col style="width:110px"><col style="width:75px"><col style="width:75px"><col style="width:75px"><col style="width:75px"><col style="width:110px"><col style="width:90px"><col style="width:140px">
     </colgroup>
     <thead><tr id="watchhead"></tr></thead>
     <tbody id="watchrows"></tbody>
@@ -230,7 +231,7 @@
 </div>
 <div class="tablewrap" id="maintable"><table>
   <colgroup>
-    <col style="width:34px"><col style="width:85px"><col><col style="width:70px"><col style="width:85px"><col style="width:85px"><col style="width:90px"><col style="width:65px"><col style="width:65px"><col style="width:90px"><col style="width:110px"><col style="width:125px"><col style="width:70px"><col style="width:110px"><col style="width:75px"><col style="width:75px"><col style="width:75px"><col style="width:75px"><col style="width:110px"><col style="width:140px">
+    <col style="width:34px"><col style="width:85px"><col><col style="width:70px"><col style="width:85px"><col style="width:85px"><col style="width:90px"><col style="width:65px"><col style="width:65px"><col style="width:90px"><col style="width:110px"><col style="width:125px"><col style="width:70px"><col style="width:110px"><col style="width:75px"><col style="width:75px"><col style="width:75px"><col style="width:75px"><col style="width:110px"><col style="width:90px"><col style="width:140px">
   </colgroup>
   <thead><tr id="headrow"></tr></thead>
   <tbody id="rows"></tbody>
@@ -289,6 +290,8 @@ const COLUMNS = [
     tip: "Return on equity: net income ÷ shareholders' equity. The return metric that works for banks. Can be inflated by heavy buybacks or leverage." },
   { key: "sent",        label: "Sentiment", sort: r => r.analystRating == null ? -Infinity : -r.analystRating, numeric: true,
     tip: "Analyst consensus rating plus 12-month price-target upside. Green = buy consensus, amber = hold, red = underperform/sell. Hover a cell for analyst count, momentum, short interest and rating changes. Informational - not scored." },
+  { key: "nav",         label: "NAV prem/disc", sort: r => r.navDisc ?? Infinity, numeric: true,
+    tip: "Investment trusts only: share price vs net asset value. Negative = trading at a discount (buying assets for less than they're worth). Colours: discount green, premium to 10% amber, above red. NAV is proxied by the last reported book value, which can lag the live NAV by months - treat as rough." },
   { key: "sector",      label: "Sector",   sort: r => r.sector || "",
     tip: "Yahoo's sector classification" },
 ];
@@ -429,6 +432,13 @@ function debtCell(r) {
   const cls = (!on ? "na" : passOf(r, "debt") ? "pass" : "fail") + (note ? " computed" : "");
   const text = r.netCash ? "net cash" : r.netDebtFcf != null ? fmt(r.netDebtFcf) : "–";
   return `<td class="${cls}"${note ? ` title="${escAttr(note)}"` : ""}>${text}${note ? "*" : ""}</td>`;
+}
+
+function navCell(r) {
+  if (!r.isTrust || r.navDisc == null) return `<td class="na">–</td>`;
+  const cls = r.navDisc <= 0 ? "pass" : r.navDisc <= 10 ? "warn" : "fail";
+  const sign = r.navDisc > 0 ? "+" : "";
+  return `<td class="${cls}" title="vs last reported NAV (book value) - can lag the live NAV by months">${sign}${r.navDisc.toFixed(1)}%</td>`;
 }
 
 function pfcfCell(r) {
@@ -575,6 +585,7 @@ function buildRow(r) {
     spreadCell(r) +
     `<td class="na" title="Yahoo: trailing net income ÷ shareholders' equity">${r.roe == null ? "–" : r.roe.toFixed(1) + "%"}</td>` +
     sentCell(r) +
+    navCell(r) +
     `<td class="na">${r.sector || "–"}</td>`;
   return tr;
 }
@@ -587,8 +598,10 @@ function render() {
   const index = $("index").value;
   const sector = $("sector").value;
   const onlyPass = $("onlypass").checked;
+  const hideIT = $("hideit").checked;
+  const base = STOCK_DATA.stocks.filter(r => !hideIT || !r.isTrust);
 
-  let rows = STOCK_DATA.stocks.filter(r =>
+  let rows = base.filter(r =>
     (!q || r.symbol.toLowerCase().includes(q) || (r.name || "").toLowerCase().includes(q)) &&
     (!country || r.country === country) &&
     (!exchange || r.exchange === exchange) &&
@@ -604,9 +617,9 @@ function render() {
     return (va < vb ? -1 : va > vb ? 1 : 0) * sortDir;
   });
 
-  const nPass = STOCK_DATA.stocks.filter(effectivePass).length;
+  const nPass = base.filter(effectivePass).length;
   $("summary").innerHTML =
-    `<b>${nPass}</b> of ${STOCK_DATA.stocks.length} screened stocks pass all ` +
+    `<b>${nPass}</b> of ${base.length} screened stocks pass all ` +
     `${activeCriteria.size} active criteria · showing <b>${rows.length}</b>` +
     (watched.size ? ` · <b>${watched.size}</b> watched` : "");
 
@@ -683,7 +696,8 @@ $("refreshbtn").addEventListener("click", async () => {
 pollStatus();
 initFilters();
 $("onlypass").checked = false;
-["search", "country", "exchange", "index", "sector", "onlypass"].forEach(id =>
+$("hideit").checked = true;
+["search", "country", "exchange", "index", "sector", "onlypass", "hideit"].forEach(id =>
   $(id).addEventListener("input", render));
 render();
 </script>
