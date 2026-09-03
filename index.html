@@ -41,6 +41,26 @@
   }
   header h1 { margin: 0; font-size: 19px; font-weight: 650; }
   header .meta { color: var(--muted); font-size: 12.5px; }
+  .tabs {
+    display: flex;
+    gap: 4px;
+    padding: 10px 24px 0;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+  .tab {
+    background: none;
+    border: 1px solid transparent;
+    border-bottom: none;
+    color: var(--muted);
+    font: inherit;
+    font-size: 13.5px;
+    padding: 8px 16px;
+    cursor: pointer;
+    border-radius: 8px 8px 0 0;
+  }
+  .tab.on { color: var(--text); background: var(--panel); border-color: var(--border); font-weight: 650; }
+  .tab:hover:not(.on) { color: var(--text); }
   .controls {
     display: flex;
     gap: 10px;
@@ -199,6 +219,12 @@
   <span class="meta" id="meta"></span>
 </header>
 
+<div class="tabs">
+  <button class="tab on" data-mode="screener">Screener</button>
+  <button class="tab" data-mode="trusts">Investment Trusts</button>
+  <button class="tab" data-mode="buffett">Buffett</button>
+</div>
+
 <div class="controls">
   <input type="search" id="search" placeholder="Search ticker or name…">
   <select id="country"><option value="">All countries</option></select>
@@ -210,8 +236,7 @@
   </select>
   <select id="index"><option value="">All indices</option></select>
   <select id="sector"><option value="">All sectors</option></select>
-  <label class="toggle"><input type="checkbox" id="onlypass" checked> Only stocks passing all criteria</label>
-  <label class="toggle" title="Closed-end investment trusts pass value screens artificially - their earnings are portfolio gains, so P/E and growth ratios don't mean what they do for operating companies"><input type="checkbox" id="hideit" checked> Hide investment trusts</label>
+  <label class="toggle" id="onlypasswrap"><input type="checkbox" id="onlypass" checked> Only stocks passing all criteria</label>
   <button id="refreshbtn" style="display:none">Refresh now</button>
   <span id="refreshpill" style="display:none"></span>
 </div>
@@ -221,18 +246,14 @@
 <div id="watchsection" style="display:none">
   <div class="sectiontitle">★ Watchlist</div>
   <div class="tablewrap"><table>
-    <colgroup>
-      <col style="width:34px"><col style="width:85px"><col><col style="width:70px"><col style="width:85px"><col style="width:85px"><col style="width:90px"><col style="width:65px"><col style="width:65px"><col style="width:90px"><col style="width:110px"><col style="width:125px"><col style="width:70px"><col style="width:110px"><col style="width:75px"><col style="width:75px"><col style="width:75px"><col style="width:75px"><col style="width:110px"><col style="width:90px"><col style="width:140px">
-    </colgroup>
+    <colgroup id="watchcols"></colgroup>
     <thead><tr id="watchhead"></tr></thead>
     <tbody id="watchrows"></tbody>
   </table></div>
   <div class="sectiontitle">All stocks</div>
 </div>
 <div class="tablewrap" id="maintable"><table>
-  <colgroup>
-    <col style="width:34px"><col style="width:85px"><col><col style="width:70px"><col style="width:85px"><col style="width:85px"><col style="width:90px"><col style="width:65px"><col style="width:65px"><col style="width:90px"><col style="width:110px"><col style="width:125px"><col style="width:70px"><col style="width:110px"><col style="width:75px"><col style="width:75px"><col style="width:75px"><col style="width:75px"><col style="width:110px"><col style="width:90px"><col style="width:140px">
-  </colgroup>
+  <colgroup id="maincols"></colgroup>
   <thead><tr id="headrow"></tr></thead>
   <tbody id="rows"></tbody>
 </table></div>
@@ -250,6 +271,14 @@ const CRITERIA = [
   { key: "pfcf",     label: "P/FCF < 10" },
   { key: "rev",      label: "Revenue growing (5y)" },
   { key: "spread",   label: "ROIC > WACC" },
+];
+
+const BUFFETT = [
+  { key: "bcash",  label: "More cash than debt" },
+  { key: "bde",    label: "Liabilities/equity < 0.8" },
+  { key: "bpref",  label: "No preferred stock" },
+  { key: "bre",    label: "Retained earnings growing" },
+  { key: "btreas", label: "Has treasury stock" },
 ];
 
 const COLUMNS = [
@@ -294,9 +323,49 @@ const COLUMNS = [
     tip: "Investment trusts only: share price vs net asset value. Negative = trading at a discount (buying assets for less than they're worth). Colours: discount green, premium to 10% amber, above red. NAV is proxied by the last reported book value, which can lag the live NAV by months - treat as rough." },
   { key: "sector",      label: "Sector",   sort: r => r.sector || "",
     tip: "Yahoo's sector classification" },
+  { key: "bscore",      label: "Score",    sort: r => 0, numeric: true,
+    tip: "Buffett balance-sheet rules passed, out of 5" },
+  { key: "bcash",       label: "Cash vs debt", sort: r => (r.cashGtDebt ? 1 : 0), numeric: true,
+    tip: "Cash & equivalents greater than borrowings (capital leases excluded). Rule of thumb: more cash than debt." },
+  { key: "bde",         label: "Liab/equity", sort: r => r.deRatio ?? Infinity, numeric: true,
+    tip: "Total liabilities ÷ shareholders' equity. Rule of thumb: under 0.80. Note lease liabilities count, which inflates this for lease-heavy businesses." },
+  { key: "bpref",       label: "Pref stock", sort: r => (r.hasPref ? 1 : 0), numeric: true,
+    tip: "Preferred stock on the balance sheet. Rule of thumb: none - common shareholders aren't behind anyone in line." },
+  { key: "bre",         label: "Ret. earnings", sort: r => r.rePct ?? -Infinity, numeric: true,
+    tip: "Retained earnings trend over the available years (latest year-on-year % shown; hover a cell for the series). Rule of thumb: growing every year - the compounding engine." },
+  { key: "btreas",      label: "Treasury", sort: r => (r.hasTreasury ? 1 : 0), numeric: true,
+    tip: "Treasury stock held (buybacks kept on the books rather than retired). Rule of thumb: they have some." },
 ];
+const COLDEFS = Object.fromEntries(COLUMNS.map(c => [c.key, c]));
 
-let activeCriteria = new Set(CRITERIA.map(c => c.key));
+const WIDTHS = {
+  watch: 34, symbol: 85, name: 0, score: 70, price: 85, wklow: 85, mcap: 90,
+  pe: 65, peg: 65, shares: 90, dividend: 110, debt: 125, pfcf: 70, rev: 110,
+  roic: 75, wacc: 75, spread: 75, roe: 75, sent: 110, nav: 90, sector: 140,
+  bscore: 70, bcash: 105, bde: 95, bpref: 95, bre: 110, btreas: 95,
+};
+
+const MODES = {
+  screener: {
+    cols: ["watch","symbol","name","score","price","wklow","mcap","pe","peg","shares","dividend","debt","pfcf","rev","roic","wacc","spread","roe","sent","sector"],
+    criteria: CRITERIA, sort: ["score", -1],
+  },
+  trusts: {
+    cols: ["watch","symbol","name","price","wklow","mcap","nav","dividend","sent","sector"],
+    criteria: null, sort: ["nav", 1],
+  },
+  buffett: {
+    cols: ["watch","symbol","name","bscore","mcap","pe","bcash","bde","bpref","bre","btreas","sector"],
+    criteria: BUFFETT, sort: ["bscore", -1],
+  },
+};
+
+let mode = "screener";
+const activeSets = {
+  screener: new Set(CRITERIA.map(c => c.key)),
+  buffett: new Set(BUFFETT.map(c => c.key)),
+};
+let activeCriteria = activeSets.screener;
 let sortKey = "score", sortDir = -1;
 
 const $ = id => document.getElementById(id);
@@ -483,6 +552,11 @@ function passOf(r, key) {
     if (spreadExempt(r)) return true;
     return r.roic != null && r.wacc != null && r.roic - r.wacc > 0;
   }
+  if (key === "bcash") return r.cashGtDebt === true;
+  if (key === "bde") return r.deRatio != null && r.deRatio < 0.8;
+  if (key === "bpref") return r.hasPref === false;
+  if (key === "bre") return r.reGrowing === true;
+  if (key === "btreas") return r.hasTreasury === true;
   return r.passes[key];
 }
 function applicableCriteria(r) {
@@ -511,11 +585,20 @@ function initFilters() {
   const indices = [...new Set(stocks.map(r => r.index).filter(Boolean))].sort();
   for (const ix of indices) $("index").add(new Option(ix, ix));
 
+}
+
+function buildChips() {
   const bar = $("critbar");
-  for (const c of CRITERIA) {
+  bar.innerHTML = "";
+  const list = MODES[mode].criteria;
+  bar.style.display = list ? "" : "none";
+  $("onlypasswrap").style.display = list ? "" : "none";
+  if (!list) return;
+  for (const c of list) {
     const chip = document.createElement("label");
-    chip.className = "crit-chip on";
-    chip.innerHTML = `<input type="checkbox" checked> ${c.label}`;
+    const on = activeCriteria.has(c.key);
+    chip.className = "crit-chip" + (on ? " on" : "");
+    chip.innerHTML = `<input type="checkbox"${on ? " checked" : ""}> ${c.label}`;
     chip.querySelector("input").addEventListener("change", e => {
       e.target.checked ? activeCriteria.add(c.key) : activeCriteria.delete(c.key);
       chip.classList.toggle("on", e.target.checked);
@@ -525,10 +608,22 @@ function initFilters() {
   }
 }
 
+function buildColgroups() {
+  const cols = MODES[mode].cols;
+  const html = cols.map(k => WIDTHS[k] ? `<col style="width:${WIDTHS[k]}px">` : "<col>").join("");
+  $("maincols").innerHTML = html;
+  $("watchcols").innerHTML = html;
+  const sum = cols.reduce((a, k) => a + (WIDTHS[k] || 0), 0);
+  for (const t of document.querySelectorAll(".tablewrap table")) {
+    t.style.minWidth = (sum + 250) + "px";
+    t.style.maxWidth = (sum + 600) + "px";
+  }
+}
+
 function buildHeader(rowId) {
   const tr = $(rowId);
   tr.innerHTML = "";
-  for (const col of COLUMNS) {
+  for (const col of MODES[mode].cols.map(k => COLDEFS[k])) {
     const th = document.createElement("th");
     th.textContent = col.label;
     if (col.tip) th.title = col.tip;
@@ -549,44 +644,67 @@ function saveWatched() {
   localStorage.setItem("screener-watchlist", JSON.stringify([...watched]));
 }
 
-function buildRow(r) {
-  const tr = document.createElement("tr");
-  if (effectivePass(r)) tr.className = "allpass";
+function critCell(r, key, text, title) {
+  const on = activeCriteria.has(key);
+  const note = noteFor(r, key);
+  const cls = (!on ? "na" : passOf(r, key) ? "pass" : "fail") + (note ? " computed" : "");
+  const t = title || note;
+  return `<td class="${cls}"${t ? ` title="${escAttr(t)}"` : ""}>${text}${note ? "*" : ""}</td>`;
+}
+
+function scoreCell(r) {
   const n = effectiveCount(r), total = effectiveTotal(r);
   const scoreCls = n === total ? "s7" : n >= total - 1 ? "s6" : n >= total - 2 ? "s5" : "slow";
   const exempt = total < activeCriteria.size;
   const scoreTitle = exempt
     ? ` title="ROIC-based criteria are N/A for banks and similar financials (no EBIT), so this stock is scored out of ${total}"`
     : "";
-  const cell = (key, text, title) => {
-    const on = activeCriteria.has(key);
-    const note = noteFor(r, key);
-    const cls = (!on ? "na" : passOf(r, key) ? "pass" : "fail") + (note ? " computed" : "");
-    const t = title || note;
-    return `<td class="${cls}"${t ? ` title="${escAttr(t)}"` : ""}>${text}${note ? "*" : ""}</td>`;
-  };
-  tr.innerHTML =
-    `<td class="watchcell"><input type="checkbox" class="watch" data-sym="${r.symbol}"${watched.has(r.symbol) ? " checked" : ""} title="Add to watchlist"></td>` +
-    `<td class="sym">${r.symbol}<span class="flag">${flagFor(r)}</span></td>` +
-    `<td class="name" title="${r.name || ""}">${r.name || ""}</td>` +
-    `<td${scoreTitle}><span class="score ${scoreCls}">${n}/${total}</span></td>` +
-    priceCell(r) +
-    `<td class="na">${fmtPrice(r.wkLow, r.currency)}</td>` +
-    cell("mcap", fmtMcap(r.mcapUsd)) +
-    peCell(r) +
-    pegCell(r) +
-    cell("shares", r.sharesPct5y == null ? "–" : (r.sharesPct5y > 0 ? "+" : "") + r.sharesPct5y.toFixed(1) + "%") +
-    divCell(r) +
-    debtCell(r) +
-    pfcfCell(r) +
-    revCell(r) +
-    roicCell(r) +
-    `<td class="na" title="Estimated via CAPM: cost of equity = 10y US Treasury + beta × 5% equity risk premium (+4% country premium for Turkey); cost of debt = interest expense ÷ total debt, after tax; weighted by market cap vs debt. An approximation - compare with ROIC.">${r.wacc == null ? "–" : r.wacc.toFixed(1) + "%"}</td>` +
-    spreadCell(r) +
-    `<td class="na" title="Yahoo: trailing net income ÷ shareholders' equity">${r.roe == null ? "–" : r.roe.toFixed(1) + "%"}</td>` +
-    sentCell(r) +
-    navCell(r) +
-    `<td class="na">${r.sector || "–"}</td>`;
+  return `<td${scoreTitle}><span class="score ${scoreCls}">${n}/${total}</span></td>`;
+}
+
+function reTitle(r) {
+  const years = Object.keys(r.reYears || {}).sort();
+  if (!years.length) return "";
+  return "Retained earnings (m): " + years.map(y => `${y}: ${r.reYears[y].toLocaleString()}`).join(" · ");
+}
+
+const CELL = {
+  watch: r => `<td class="watchcell"><input type="checkbox" class="watch" data-sym="${r.symbol}"${watched.has(r.symbol) ? " checked" : ""} title="Add to watchlist"></td>`,
+  symbol: r => `<td class="sym">${r.symbol}<span class="flag">${flagFor(r)}</span></td>`,
+  name: r => `<td class="name" title="${escAttr(r.name || "")}">${r.name || ""}</td>`,
+  score: scoreCell,
+  bscore: scoreCell,
+  price: priceCell,
+  wklow: r => `<td class="na">${fmtPrice(r.wkLow, r.currency)}</td>`,
+  mcap: r => critCell(r, "mcap", fmtMcap(r.mcapUsd)),
+  pe: peCell,
+  peg: pegCell,
+  shares: r => critCell(r, "shares", r.sharesPct5y == null ? "\u2013" : (r.sharesPct5y > 0 ? "+" : "") + r.sharesPct5y.toFixed(1) + "%"),
+  dividend: divCell,
+  debt: debtCell,
+  pfcf: pfcfCell,
+  rev: revCell,
+  roic: roicCell,
+  wacc: r => `<td class="na" title="Estimated via CAPM: cost of equity = 10y US Treasury + beta \u00d7 5% equity risk premium (+4% country premium for Turkey); cost of debt = interest expense \u00f7 total debt, after tax; weighted by market cap vs debt. An approximation - compare with ROIC.">${r.wacc == null ? "\u2013" : r.wacc.toFixed(1) + "%"}</td>`,
+  spread: spreadCell,
+  roe: r => `<td class="na" title="Yahoo: trailing net income \u00f7 shareholders' equity">${r.roe == null ? "\u2013" : r.roe.toFixed(1) + "%"}</td>`,
+  sent: sentCell,
+  nav: navCell,
+  sector: r => `<td class="na">${r.sector || "\u2013"}</td>`,
+  bcash: r => critCell(r, "bcash",
+    r.cashGtDebt == null ? "\u2013" : r.cashGtDebt ? "Yes" : "No",
+    r.cashV != null && r.borrowV != null
+      ? `cash ${(r.cashV / 1e9).toFixed(2)}bn vs borrowings ${(r.borrowV / 1e9).toFixed(2)}bn (reporting currency, leases excluded)` : ""),
+  bde: r => critCell(r, "bde", fmt(r.deRatio)),
+  bpref: r => critCell(r, "bpref", r.hasPref == null ? "\u2013" : r.hasPref ? "Yes" : "None"),
+  bre: r => critCell(r, "bre", r.rePct == null ? "\u2013" : (r.rePct >= 0 ? "+" : "") + r.rePct.toFixed(1) + "%", reTitle(r)),
+  btreas: r => critCell(r, "btreas", r.hasTreasury == null ? "\u2013" : r.hasTreasury ? "Yes" : "None"),
+};
+
+function buildRow(r) {
+  const tr = document.createElement("tr");
+  if (MODES[mode].criteria && effectivePass(r)) tr.className = "allpass";
+  tr.innerHTML = MODES[mode].cols.map(k => CELL[k](r)).join("");
   return tr;
 }
 
@@ -597,9 +715,9 @@ function render() {
   const exchange = $("exchange").value;
   const index = $("index").value;
   const sector = $("sector").value;
-  const onlyPass = $("onlypass").checked;
-  const hideIT = $("hideit").checked;
-  const base = STOCK_DATA.stocks.filter(r => !hideIT || !r.isTrust);
+  const hasCriteria = !!MODES[mode].criteria;
+  const onlyPass = hasCriteria && $("onlypass").checked;
+  const base = STOCK_DATA.stocks.filter(r => mode === "trusts" ? r.isTrust : !r.isTrust);
 
   let rows = base.filter(r =>
     (!q || r.symbol.toLowerCase().includes(q) || (r.name || "").toLowerCase().includes(q)) &&
@@ -610,30 +728,33 @@ function render() {
     (!onlyPass || effectivePass(r))
   );
 
-  const col = COLUMNS.find(c => c.key === sortKey);
-  rows.sort((a, b) => {
-    const va = col.key === "score" ? scoreRatio(a) : col.sort(a);
-    const vb = col.key === "score" ? scoreRatio(b) : col.sort(b);
+  const col = COLDEFS[sortKey];
+  const sortVal = r => (sortKey === "score" || sortKey === "bscore") ? scoreRatio(r) : col.sort(r);
+  const bySort = (a, b) => {
+    const va = sortVal(a), vb = sortVal(b);
     return (va < vb ? -1 : va > vb ? 1 : 0) * sortDir;
-  });
+  };
+  rows.sort(bySort);
 
-  const nPass = base.filter(effectivePass).length;
-  $("summary").innerHTML =
-    `<b>${nPass}</b> of ${base.length} screened stocks pass all ` +
-    `${activeCriteria.size} active criteria · showing <b>${rows.length}</b>` +
-    (watched.size ? ` · <b>${watched.size}</b> watched` : "");
+  if (mode === "trusts") {
+    $("summary").innerHTML =
+      `<b>${rows.length}</b> of ${base.length} investment trusts shown \u00b7 ` +
+      `NAV figures use the last reported book value`;
+  } else {
+    const nPass = base.filter(effectivePass).length;
+    $("summary").innerHTML =
+      `<b>${nPass}</b> of ${base.length} operating companies pass all ` +
+      `${activeCriteria.size} active criteria \u00b7 showing <b>${rows.length}</b>` +
+      (watched.size ? ` \u00b7 <b>${watched.size}</b> watched` : "");
+  }
 
   const tbody = $("rows");
   tbody.innerHTML = "";
   for (const r of rows) tbody.appendChild(buildRow(r));
   $("empty").style.display = rows.length ? "none" : "";
 
-  const watchRows = STOCK_DATA.stocks.filter(r => watched.has(r.symbol));
-  watchRows.sort((a, b) => {
-    const va = col.key === "score" ? scoreRatio(a) : col.sort(a);
-    const vb = col.key === "score" ? scoreRatio(b) : col.sort(b);
-    return (va < vb ? -1 : va > vb ? 1 : 0) * sortDir;
-  });
+  const watchRows = mode === "screener" ? STOCK_DATA.stocks.filter(r => watched.has(r.symbol)) : [];
+  watchRows.sort(bySort);
   $("watchsection").style.display = watchRows.length ? "" : "none";
   if (watchRows.length) {
     buildHeader("watchhead");
@@ -696,9 +817,21 @@ $("refreshbtn").addEventListener("click", async () => {
 pollStatus();
 initFilters();
 $("onlypass").checked = false;
-$("hideit").checked = true;
-["search", "country", "exchange", "index", "sector", "onlypass", "hideit"].forEach(id =>
+["search", "country", "exchange", "index", "sector", "onlypass"].forEach(id =>
   $(id).addEventListener("input", render));
+for (const btn of document.querySelectorAll(".tab")) {
+  btn.addEventListener("click", () => {
+    mode = btn.dataset.mode;
+    document.querySelectorAll(".tab").forEach(b => b.classList.toggle("on", b === btn));
+    activeCriteria = activeSets[mode] || new Set();
+    [sortKey, sortDir] = MODES[mode].sort;
+    buildColgroups();
+    buildChips();
+    render();
+  });
+}
+buildColgroups();
+buildChips();
 render();
 </script>
 </body>

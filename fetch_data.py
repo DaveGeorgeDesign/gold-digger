@@ -421,6 +421,41 @@ def screen_ticker(symbol):
     if ebit is not None and assets and curr_liab is not None and assets - curr_liab > 0:
         roce = ebit / (assets - curr_liab) * 100
 
+    # Buffett balance-sheet framework
+    total_liab = statement_value(bs, ("Total Liabilities Net Minority Interest",))[0]
+    equity = statement_value(bs, ("Stockholders Equity", "Common Stock Equity"))[0]
+    de_ratio = (total_liab / equity
+                if total_liab is not None and equity and equity > 0 else None)
+    has_pref = bool(statement_value(bs, ("Preferred Stock",))[0])
+    has_treasury = (bool(statement_value(bs, ("Treasury Stock",))[0])
+                    or bool(statement_value(bs, ("Treasury Shares Number",))[0]))
+    # borrowings excl. leases, so lease-heavy zero-borrowing companies pass rule 1
+    bs_debt = statement_value(bs, ("Total Debt",))[0]
+    leases = statement_value(bs, ("Capital Lease Obligations",))[0]
+    if bs_debt is not None:
+        borrowings = max(bs_debt - (leases or 0), 0)
+    else:
+        lt_b = statement_value(bs, ("Long Term Debt",))[0]
+        st_b = statement_value(bs, ("Current Debt",))[0]
+        borrowings = ((lt_b or 0) + (st_b or 0)
+                      if (lt_b is not None or st_b is not None) else debt)
+    cash_gt_debt = (cash is not None and borrowings is not None
+                    and cash > borrowings)
+    re_growing = None
+    re_pct = None
+    re_years = {}
+    try:
+        if bs is not None and not bs.empty and "Retained Earnings" in bs.index:
+            row = bs.loc["Retained Earnings"].dropna().sort_index()
+            re_years = {int(k.year): round(float(v) / 1e6) for k, v in row.items()}
+            vals = [float(v) for v in row.values]
+            if len(vals) >= 2:
+                re_growing = all(b > a for a, b in zip(vals, vals[1:]))
+                if vals[-2] != 0:
+                    re_pct = (vals[-1] - vals[-2]) / abs(vals[-2]) * 100
+    except Exception:
+        pass
+
     rev_cagr, rev_span = statement_cagr(inc, ("Total Revenue",))
     if rev_cagr is None:
         for alt in ("Operating Revenue", "Interest Income"):
@@ -463,6 +498,15 @@ def screen_ticker(symbol):
         "netCash": net_cash,
         "isTrust": is_trust,
         "navDisc": round(nav_disc, 1) if nav_disc is not None else None,
+        "cashGtDebt": cash_gt_debt,
+        "cashV": cash,
+        "borrowV": borrowings,
+        "deRatio": round(de_ratio, 2) if de_ratio is not None else None,
+        "hasPref": has_pref,
+        "reGrowing": re_growing,
+        "rePct": round(re_pct, 1) if re_pct is not None else None,
+        "reYears": re_years,
+        "hasTreasury": has_treasury,
         "pFcf": round(p_fcf, 2) if p_fcf is not None else None,
         "revCagr": round(rev_cagr, 1) if rev_cagr is not None else None,
         "revSpan": rev_span,
