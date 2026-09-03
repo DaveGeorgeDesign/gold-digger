@@ -1,6 +1,16 @@
 # Gold Digger
 
-A stock-screening dashboard showing S&P 500 + FTSE 100 + FTSE 250 + BIST 100 stocks screened against these criteria:
+A stock-screening dashboard for S&P 500 + FTSE 100 + FTSE 250 + BIST 100
+stocks, in three tabs:
+
+- **Screener** - operating companies against the 9 value criteria below
+- **Investment Trusts** - closed-end trusts only, sorted by NAV discount
+  (trusts pass value screens artificially, so they live separately)
+- **Buffett** - a 5-rule balance-sheet check: more cash than borrowings,
+  liabilities/equity under 0.8, no preferred stock, retained earnings growing
+  every year, and treasury stock held
+
+Screener criteria:
 
 1. Market cap over $2bn
 2. P/E ratio under 12
