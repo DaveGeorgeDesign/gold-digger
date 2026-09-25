@@ -132,7 +132,7 @@
   .tablewrap { overflow: auto; padding: 0 0 12px; margin: 0 24px; }
   #maintable { flex: 1 1 auto; min-height: 0; }
   #watchsection .tablewrap { max-height: 35vh; }
-  table { border-collapse: collapse; width: 100%; min-width: 1910px; max-width: 2324px; table-layout: fixed; }
+  table { border-collapse: collapse; width: 100%; min-width: 1990px; max-width: 2404px; table-layout: fixed; }
   th, td { padding: 9px 12px; text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   th:first-child, td:first-child, th:nth-child(2), td:nth-child(2) { text-align: left; }
   thead th {
@@ -289,6 +289,8 @@ const COLUMNS = [
   { key: "name",        label: "Company",  sort: r => r.name },
   { key: "score",       label: "Score",    sort: r => r.passCount, numeric: true,
     tip: "Criteria passed out of those applicable. Banks are scored out of fewer - ROIC-based rules are N/A for them. Toggle the chips above to change which criteria count." },
+  { key: "quant",       label: "Quant",    sort: r => r.quant ?? -Infinity, numeric: true,
+    tip: "Sector-neutral multi-factor score, 0-100. Each stock is percentile-ranked against its own sector on six factors - earnings yield, FCF yield, quality (ROIC−WACC, or ROE−WACC for banks), buybacks (5y share count change), momentum (price vs 200-day average) and analyst target upside - and the ranks are averaged. Needs at least 4 factors. Hover a cell for the breakdown. Informational - not scored." },
   { key: "price",       label: "Price",    sort: r => r.price ?? -1, numeric: true,
     tip: "Latest price in the listing currency. Green = within 5% of the 52-week low." },
   { key: "wklow",       label: "52wk low", sort: r => r.wkLow ?? -1, numeric: true,
@@ -339,7 +341,7 @@ const COLUMNS = [
 const COLDEFS = Object.fromEntries(COLUMNS.map(c => [c.key, c]));
 
 const WIDTHS = {
-  watch: 34, symbol: 85, name: 0, score: 70, price: 85, wklow: 85, mcap: 90,
+  watch: 34, symbol: 85, name: 0, score: 70, quant: 80, price: 85, wklow: 85, mcap: 90,
   pe: 65, peg: 65, shares: 90, dividend: 110, debt: 125, pfcf: 70, rev: 110,
   roic: 75, wacc: 75, spread: 75, roe: 75, sent: 110, nav: 90, sector: 140,
   bscore: 70, bcash: 105, bde: 95, bpref: 95, bre: 110, btreas: 95,
@@ -347,7 +349,7 @@ const WIDTHS = {
 
 const MODES = {
   screener: {
-    cols: ["watch","symbol","name","score","price","wklow","mcap","pe","peg","shares","dividend","debt","pfcf","rev","roic","wacc","spread","roe","sent","sector"],
+    cols: ["watch","symbol","name","score","quant","price","wklow","mcap","pe","peg","shares","dividend","debt","pfcf","rev","roic","wacc","spread","roe","sent","sector"],
     criteria: CRITERIA, sort: ["score", -1],
   },
   trusts: {
@@ -662,6 +664,56 @@ function scoreCell(r) {
   return `<td${scoreTitle}><span class="score ${scoreCls}">${n}/${total}</span></td>`;
 }
 
+// ---- sector-neutral quant composite ----
+const QUANT_FACTORS = [
+  { key: "value",    label: "Earnings yield", get: r => r.pe > 0 ? 1 / r.pe : null },
+  { key: "fcf",      label: "FCF yield",      get: r => r.pFcf > 0 ? 1 / r.pFcf : null },
+  { key: "quality",  label: "Quality",        get: r => r.wacc == null ? null : r.roic != null ? r.roic - r.wacc : r.roe != null ? r.roe - r.wacc : null },
+  { key: "buyback",  label: "Buybacks",       get: r => r.sharesPct5y == null ? null : -r.sharesPct5y },
+  { key: "momentum", label: "Momentum",       get: r => r.vs200d ?? null },
+  { key: "analyst",  label: "Analyst upside", get: r => r.targetUpside ?? null },
+];
+function computeQuant(stocks) {
+  const bySector = {};
+  for (const r of stocks) {
+    r.quant = null; r.quantRanks = null;
+    if (r.isTrust || !r.sector) continue;
+    (bySector[r.sector] ||= []).push(r);
+  }
+  for (const group of Object.values(bySector)) {
+    const ranks = new Map(group.map(r => [r, {}]));
+    for (const f of QUANT_FACTORS) {
+      const vals = group.map(r => [r, f.get(r)]).filter(([, v]) => v != null && isFinite(v));
+      vals.sort((a, b) => a[1] - b[1]);
+      const n = vals.length;
+      if (n < 3) continue;
+      let i = 0;
+      while (i < n) {           // average rank for ties
+        let j = i;
+        while (j + 1 < n && vals[j + 1][1] === vals[i][1]) j++;
+        const pct = ((i + j) / 2) / (n - 1);
+        for (let k = i; k <= j; k++) ranks.get(vals[k][0])[f.key] = pct;
+        i = j + 1;
+      }
+    }
+    for (const r of group) {
+      const rk = ranks.get(r), got = Object.values(rk);
+      if (got.length < 4) continue;
+      r.quant = Math.round(got.reduce((a, b) => a + b, 0) / got.length * 100);
+      r.quantRanks = rk;
+    }
+  }
+}
+computeQuant(STOCK_DATA.stocks);
+
+function quantCell(r) {
+  if (r.quant == null) return `<td class="na" title="Not enough data for at least 4 of the 6 factors">\u2013</td>`;
+  const cls = r.quant >= 70 ? "pass" : r.quant >= 40 ? "warn" : "fail";
+  const parts = QUANT_FACTORS.map(f => `${f.label}: ${r.quantRanks[f.key] == null ? "n/a" : Math.round(r.quantRanks[f.key] * 100)}`);
+  const title = `Percentile vs ${r.sector} peers (100 = best) \u00b7 ` + parts.join(" \u00b7 ");
+  return `<td class="${cls}" title="${escAttr(title)}">${r.quant}</td>`;
+}
+
 function reTitle(r) {
   const years = Object.keys(r.reYears || {}).sort();
   if (!years.length) return "";
@@ -674,6 +726,7 @@ const CELL = {
   name: r => `<td class="name" title="${escAttr(r.name || "")}">${r.name || ""}</td>`,
   score: scoreCell,
   bscore: scoreCell,
+  quant: quantCell,
   price: priceCell,
   wklow: r => `<td class="na">${fmtPrice(r.wkLow, r.currency)}</td>`,
   mcap: r => critCell(r, "mcap", fmtMcap(r.mcapUsd)),
