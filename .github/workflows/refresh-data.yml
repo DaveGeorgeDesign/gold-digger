@@ -35,4 +35,6 @@ jobs:
             git fetch origin main
             git rebase -X theirs origin/main
             git push origin main
+            # clear jsDelivr's cache so the live site picks up the new data now
+            curl -fsS "https://purge.jsdelivr.net/gh/DaveGeorgeDesign/gold-digger@main/data.js" || true
           }

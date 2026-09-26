@@ -259,8 +259,26 @@
 </table></div>
 <div class="empty" id="empty" style="display:none">No stocks match the current filters.</div>
 
-<script src="data.js"></script>
-<script>
+<script type="module">
+// Data loading: on the hosted site, data.js comes straight from GitHub via the
+// jsDelivr CDN, so daily data refreshes never need a Netlify deploy. Locally
+// (serve.py, localhost or file://) the data.js next to this page is used.
+// If the CDN fails, fall back to the copy bundled with the last deploy.
+const DATA_CDN = "https://cdn.jsdelivr.net/gh/DaveGeorgeDesign/gold-digger@main/data.js";
+const loadScript = src => new Promise((resolve, reject) => {
+  const el = document.createElement("script");
+  el.src = src; el.onload = resolve; el.onerror = reject;
+  document.head.appendChild(el);
+});
+const isLocal = !location.protocol.startsWith("http") ||
+  ["localhost", "127.0.0.1", "[::1]"].includes(location.hostname);
+if (isLocal) {
+  await loadScript("data.js");
+} else {
+  try { await loadScript(DATA_CDN); }
+  catch { console.warn("CDN data unavailable - using bundled data.js"); await loadScript("data.js"); }
+}
+
 const CRITERIA = [
   { key: "mcap",     label: "Mkt cap > $2bn" },
   { key: "pe",       label: "P/E < 12" },

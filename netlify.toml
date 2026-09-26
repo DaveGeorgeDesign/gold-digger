@@ -1,3 +1,6 @@
 [build]
   command = "bash package_site.sh"
   publish = "site"
+  # Skip the build (no deploy, no credits) when a commit only changes data.js -
+  # the live page loads data.js from GitHub via jsDelivr instead.
+  ignore = "git diff --quiet $CACHED_COMMIT_REF $COMMIT_REF -- . ':(exclude)data.js'"
