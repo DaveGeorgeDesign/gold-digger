@@ -264,7 +264,20 @@
 // jsDelivr CDN, so daily data refreshes never need a Netlify deploy. Locally
 // (serve.py, localhost or file://) the data.js next to this page is used.
 // If the CDN fails, fall back to the copy bundled with the last deploy.
-const DATA_CDN = "https://cdn.jsdelivr.net/gh/DaveGeorgeDesign/gold-digger@main/data.js";
+const REPO = "DaveGeorgeDesign/gold-digger";
+// Pin the CDN URL to the latest commit so a fresh refresh shows immediately
+// (a branch URL can be cached by jsDelivr and browsers for hours).
+async function dataCdnUrl() {
+  try {
+    const res = await fetch(`https://api.github.com/repos/${REPO}/commits/main`,
+      { headers: { Accept: "application/vnd.github.sha" } });
+    if (res.ok) {
+      const sha = (await res.text()).trim();
+      if (/^[0-9a-f]{40}$/.test(sha)) return `https://cdn.jsdelivr.net/gh/${REPO}@${sha}/data.js`;
+    }
+  } catch {}
+  return `https://cdn.jsdelivr.net/gh/${REPO}@main/data.js`;
+}
 const loadScript = src => new Promise((resolve, reject) => {
   const el = document.createElement("script");
   el.src = src; el.onload = resolve; el.onerror = reject;
@@ -275,7 +288,7 @@ const isLocal = !location.protocol.startsWith("http") ||
 if (isLocal) {
   await loadScript("data.js");
 } else {
-  try { await loadScript(DATA_CDN); }
+  try { await loadScript(await dataCdnUrl()); }
   catch { console.warn("CDN data unavailable - using bundled data.js"); await loadScript("data.js"); }
 }
 
