@@ -289,7 +289,18 @@ if (isLocal) {
   await loadScript("data.js");
 } else {
   try { await loadScript(await dataCdnUrl()); }
-  catch { console.warn("CDN data unavailable - using bundled data.js"); await loadScript("data.js"); }
+  catch {
+    try {
+      const res = await fetch(`https://raw.githubusercontent.com/${REPO}/main/data.js`);
+      if (!res.ok) throw new Error(res.status);
+      const txt = await res.text();
+      window.STOCK_DATA = JSON.parse(txt.slice(txt.indexOf("{"), txt.lastIndexOf("}") + 1));
+    } catch {
+      console.warn("CDN and raw GitHub unavailable - using bundled data.js");
+      window.DATA_IS_BUNDLED = true;
+      await loadScript("data.js");
+    }
+  }
 }
 
 const CRITERIA = [
@@ -861,11 +872,13 @@ const indexLabel = [...new Set(STOCK_DATA.stocks.map(r => r.index).filter(Boolea
 $("meta").textContent =
   `${STOCK_DATA.stocks.length} stocks · ${indexLabel} · updated ${STOCK_DATA.generated}`;
 const ageDays = (Date.now() - new Date(STOCK_DATA.generated.replace(" ", "T"))) / 864e5;
-if (ageDays > 2) {
+if (ageDays > 2 || window.DATA_IS_BUNDLED) {
   const warn = document.createElement("span");
   warn.className = "meta";
   warn.style.color = "var(--amber)";
-  warn.textContent = `⚠ data is ${Math.floor(ageDays)} days old`;
+  warn.textContent = window.DATA_IS_BUNDLED
+    ? `⚠ live data blocked (content blocker?) - showing copy from last deploy`
+    : `⚠ data is ${Math.floor(ageDays)} days old`;
   $("meta").after(warn);
 }
 
