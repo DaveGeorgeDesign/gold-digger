@@ -1,6 +1,7 @@
 [build]
   command = "bash package_site.sh"
   publish = "site"
-  # Skip the build (no deploy, no credits) when a commit only changes data.js -
-  # the live page loads data.js from GitHub (jsDelivr, then raw fallback).
-  ignore = "git diff --quiet $CACHED_COMMIT_REF $COMMIT_REF -- . ':(exclude)data.js'"
+  # Skip the build (no deploy, no credits) when a commit only changes data.js,
+  # the GitHub workflow or docs - the live page loads data.js from GitHub
+  # (jsDelivr, then raw fallback), and none of the others are part of the site.
+  ignore = "git diff --quiet $CACHED_COMMIT_REF $COMMIT_REF -- . ':(exclude)data.js' ':(exclude).github' ':(exclude)*.md'"

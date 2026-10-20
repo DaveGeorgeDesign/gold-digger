@@ -2,7 +2,7 @@ name: Daily data refresh
 
 on:
   schedule:
-    - cron: "0 6 * * *"  # 06:00 UTC daily (07:00 BST, 06:00 GMT)
+    - cron: "15 8 * * *"  # 08:15 UTC daily = 08:15 GMT (09:15 UK time during BST)
   workflow_dispatch:      # allows manual runs from the Actions tab
 
 jobs:
