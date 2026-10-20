@@ -335,6 +335,8 @@ const COLUMNS = [
     tip: "Sector-neutral multi-factor score, 0-100. Each stock is percentile-ranked against its own sector on six factors - earnings yield, FCF yield, quality (ROIC−WACC, or ROE−WACC for banks), buybacks (5y share count change), momentum (price vs 200-day average) and analyst target upside - and the ranks are averaged. Needs at least 4 factors. Hover a cell for the breakdown. Informational - not scored." },
   { key: "price",       label: "Price",    sort: r => r.price ?? -1, numeric: true,
     tip: "Latest price in the listing currency. Green = within 5% of the 52-week low." },
+  { key: "fv",          label: "Fair value", sort: r => r.fvUpside ?? -Infinity, numeric: true,
+    tip: "Model estimate of intrinsic value per share, in the listing currency. Most companies: 5-year DCF of free cash flow (growth = revenue growth capped at 0-10%/yr, then 2% forever, discounted at WACC with an 8% floor), less net debt. Banks, insurers and other financials: justified price-to-book, book value × (ROE − 2%) ÷ (cost of equity − 2%), cost of equity floored at 8%. Deliberately conservative, so fast growers rarely look cheap. Green = price at least 25% below fair value, amber = within 25%, red = more than 25% above. Sorts by upside. Hover a cell for the inputs. An estimate, not a fact - informational, not scored." },
   { key: "wklow",       label: "52wk low", sort: r => r.wkLow ?? -1, numeric: true,
     tip: "Lowest price over the past 52 weeks" },
   { key: "mcap",        label: "Mkt cap",  sort: r => r.mcapUsd ?? -1, numeric: true,
@@ -383,7 +385,7 @@ const COLUMNS = [
 const COLDEFS = Object.fromEntries(COLUMNS.map(c => [c.key, c]));
 
 const WIDTHS = {
-  watch: 34, symbol: 85, name: 0, score: 70, quant: 95, price: 85, wklow: 85, mcap: 90,
+  watch: 34, symbol: 85, name: 0, score: 70, quant: 95, price: 85, fv: 110, wklow: 85, mcap: 90,
   pe: 65, peg: 65, shares: 90, dividend: 110, debt: 125, pfcf: 70, rev: 110,
   roic: 75, wacc: 75, spread: 75, roe: 75, sent: 110, nav: 90, sector: 140,
   bscore: 70, bcash: 105, bde: 95, bpref: 95, bre: 110, btreas: 95,
@@ -391,7 +393,7 @@ const WIDTHS = {
 
 const MODES = {
   screener: {
-    cols: ["watch","symbol","name","score","quant","price","wklow","mcap","pe","peg","shares","dividend","debt","pfcf","rev","roic","wacc","spread","roe","sent","sector"],
+    cols: ["watch","symbol","name","score","quant","price","fv","wklow","mcap","pe","peg","shares","dividend","debt","pfcf","rev","roic","wacc","spread","roe","sent","sector"],
     criteria: CRITERIA, sort: ["score", -1],
   },
   trusts: {
@@ -756,6 +758,51 @@ function quantCell(r) {
   return `<td class="${cls}" title="${escAttr(title)}">${r.quant}</td>`;
 }
 
+// ---- fair value estimate ----
+const FV = { years: 5, gCap: 10, gTerm: 2, rFloor: 8, keFloor: 8, margin: 25 };
+function computeFairValue(r) {
+  r.fv = null; r.fvUpside = null; r.fvNote = null;
+  if (r.isTrust || r.price == null) return;
+  // banks and insurers: cash flow is distorted by deposits / policyholder float
+  const bankLike = r.sector === "Financial Services";
+  const gT = FV.gTerm / 100;
+  if (bankLike) {
+    if (r.ke == null) { r.fvNote = "Cost of equity not in this data yet - appears after the next data refresh"; return; }
+    if (!(r.pe > 0) || r.roe == null || r.roe <= 0) { r.fvNote = "Needs positive earnings and ROE"; return; }
+    const roe = r.roe / 100, ke = Math.max(r.ke, FV.keFloor) / 100;
+    const bvps = r.price / r.pe / roe;            // book value per share, listing currency
+    r.fv = bvps * (roe - gT) / (ke - gT);
+    r.fvNote = `Justified P/B: book value ${fmtPrice(+bvps.toFixed(2), r.currency)} × (ROE ${r.roe.toFixed(1)}% − ${FV.gTerm}%) ÷ (cost of equity ${(ke * 100).toFixed(1)}% − ${FV.gTerm}%)`;
+  } else {
+    if (!(r.pFcf > 0) || r.wacc == null) { r.fvNote = "Needs positive free cash flow and a WACC"; return; }
+    const fcf0 = r.price / r.pFcf;                // FCF per share, listing currency
+    const g = Math.min(Math.max(r.revCagr ?? 0, 0), FV.gCap) / 100;
+    const wr = Math.max(r.wacc, FV.rFloor) / 100;
+    let pv = 0, f = fcf0;
+    for (let t = 1; t <= FV.years; t++) { f *= 1 + g; pv += f / (1 + wr) ** t; }
+    pv += f * (1 + gT) / (wr - gT) / (1 + wr) ** FV.years;
+    const netDebt = (r.netDebtFcf ?? 0) * fcf0;   // null = net cash with no figure: treat as 0
+    r.fv = pv - netDebt;
+    r.fvNote = `DCF: FCF/share ${fmtPrice(+fcf0.toFixed(2), r.currency)}, growth ${(g * 100).toFixed(1)}%/yr for ${FV.years}y then ${FV.gTerm}%, discount rate ${(wr * 100).toFixed(1)}%, ` +
+      (netDebt >= 0 ? `less net debt ${fmtPrice(+netDebt.toFixed(2), r.currency)}/share` : `plus net cash ${fmtPrice(+(-netDebt).toFixed(2), r.currency)}/share`);
+  }
+  if (!(r.fv > 0) || r.fv > r.price * 10) {
+    r.fvNote = (r.fv > 0 ? "Model gives over 10× the price - " : "Model gives a negative value - ") + "not meaningful for this stock. " + r.fvNote;
+    r.fv = null; return;
+  }
+  r.fvUpside = (r.fv / r.price - 1) * 100;
+}
+STOCK_DATA.stocks.forEach(computeFairValue);
+
+function fvCell(r) {
+  if (r.fv == null) return `<td class="na"${r.fvNote ? ` title="${escAttr(r.fvNote)}"` : ""}>\u2013</td>`;
+  const up = r.fvUpside;
+  const cls = up >= FV.margin / (1 - FV.margin / 100) ? "pass" : up >= (100 / (100 + FV.margin) - 1) * 100 ? "warn" : "fail";
+  const t = `${up >= 0 ? "+" : ""}${up.toFixed(0)}% vs price \u00b7 ${r.fvNote}` +
+    (r.targetUpside != null ? ` \u00b7 analyst 12m target ${r.targetUpside >= 0 ? "+" : ""}${r.targetUpside}%` : "");
+  return `<td class="${cls}" title="${escAttr(t)}">${fmtPrice(+r.fv.toPrecision(4), r.currency)}</td>`;
+}
+
 function reTitle(r) {
   const years = Object.keys(r.reYears || {}).sort();
   if (!years.length) return "";
@@ -771,6 +818,7 @@ const CELL = {
   quant: quantCell,
   price: priceCell,
   wklow: r => `<td class="na">${fmtPrice(r.wkLow, r.currency)}</td>`,
+  fv: fvCell,
   mcap: r => critCell(r, "mcap", fmtMcap(r.mcapUsd)),
   pe: peCell,
   peg: pegCell,

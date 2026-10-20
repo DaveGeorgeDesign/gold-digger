@@ -45,6 +45,11 @@ button.
 Opening `index.html` directly also works - you just get a static view with no
 refresh support.
 
+- The **Fair value** column is a deliberately conservative model estimate,
+  computed in the browser: a 5-year DCF of free cash flow (growth = revenue
+  growth capped at 0-10%, then 2%, discounted at WACC with an 8% floor, less net
+  debt), or for financials a justified price-to-book (book value × (ROE − 2%) ÷
+  (cost of equity − 2%)). Tune it via the `FV` constants in `index.html`.
 - Click the criteria chips to include/exclude individual rules
 - Untick "Only stocks passing all criteria" to see near-misses ranked by score
 - Filter by country, exchange or sector; click column headers to sort

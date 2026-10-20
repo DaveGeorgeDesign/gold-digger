@@ -401,6 +401,7 @@ def screen_ticker(symbol):
 
     # WACC via CAPM: Ke = rf + beta x ERP; Kd = interest expense / total debt
     wacc = None
+    ke = None
     if mcap_usd:
         rf = risk_free()
         crp = 4.0 if symbol.endswith(".IS") else 0.0  # Turkey country risk premium
@@ -512,6 +513,7 @@ def screen_ticker(symbol):
         "revSpan": rev_span,
         "roic": round(roic, 1) if roic is not None else None,
         "wacc": round(wacc, 1) if wacc is not None else None,
+        "ke": round(ke, 1) if ke is not None else None,  # cost of equity (CAPM)
         "roce": round(roce, 1) if roce is not None else None,
         "roe": round(roe * 100, 1) if roe is not None else None,
         "passes": passes,
