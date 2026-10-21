@@ -223,6 +223,7 @@
   <button class="tab on" data-mode="screener">Screener</button>
   <button class="tab" data-mode="trusts">Investment Trusts</button>
   <button class="tab" data-mode="buffett">Buffett</button>
+  <button class="tab" data-mode="lynch">Peter Lynch</button>
 </div>
 
 <div class="controls">
@@ -323,6 +324,38 @@ const BUFFETT = [
   { key: "btreas", label: "Has treasury stock" },
 ];
 
+const LYNCH = [
+  { key: "lpeg",   label: "PEG < 1" },
+  { key: "ldpeg",  label: "(Growth + yield) ÷ P/E ≥ 1.5" },
+  { key: "lgrow",  label: "EPS growth 10-50%/yr" },
+  { key: "ldebt",  label: "Debt/equity < 0.8" },
+  { key: "linv",   label: "Inventory not outpacing sales" },
+  { key: "linst",  label: "Institutions own < 60%" },
+];
+
+// Peter Lynch helpers - computed here so they work on any data vintage
+function lynchGrowth(r) {        // expected EPS growth %/yr implied by P/E ÷ PEG
+  return r.pe > 0 && r.peg > 0 ? r.pe / r.peg : null;
+}
+function lynchYield(r) {         // last complete year's dividends ÷ price
+  if (r.divStatus === "none") return 0;
+  const ys = Object.keys(r.divYears || {}).sort();
+  if (!ys.length || !(r.price > 0)) return null;
+  const y = r.divYears[ys[ys.length - 1]] / r.price * 100;
+  return y >= 0 && y < 25 ? y : null;
+}
+function lynchDpeg(r) {          // Lynch: 1 poor, 1.5 okay, 2+ very good
+  const g = lynchGrowth(r), y = lynchYield(r);
+  return g != null && y != null ? (g + y) / r.pe : null;
+}
+function lynchType(r) {
+  if (r.sector === "Basic Materials" || r.sector === "Energy") return "Cyclical";
+  if (!(r.pe > 0)) return "Turnaround?";
+  const g = lynchGrowth(r);
+  if (g == null) return null;
+  return g >= 15 ? "Fast grower" : g >= 5 ? "Stalwart" : "Slow grower";
+}
+
 const COLUMNS = [
   { key: "watch",       label: "★", noSort: true,
     tip: "Watchlist - starred stocks appear in their own table above, saved in this browser" },
@@ -369,6 +402,22 @@ const COLUMNS = [
     tip: "Investment trusts only: share price vs net asset value. Negative = trading at a discount (buying assets for less than they're worth). Colours: discount green, premium to 10% amber, above red. NAV is proxied by the last reported book value, which can lag the live NAV by months - treat as rough." },
   { key: "sector",      label: "Sector",   sort: r => r.sector || "",
     tip: "Yahoo's sector classification" },
+  { key: "lscore",      label: "Score",    sort: r => 0, numeric: true,
+    tip: "Peter Lynch rules passed, out of those that apply. Debt is N/A for financials, inventory for companies that hold none, and any rule whose data isn't in this refresh yet." },
+  { key: "ltype",       label: "Lynch type", sort: r => lynchType(r) || "",
+    tip: "Lynch's stock categories, from expected EPS growth: Slow grower (under 5%/yr), Stalwart (5-15%), Fast grower (15%+). Basic materials and energy are Cyclical; loss-makers are possible Turnarounds. Informational - not scored." },
+  { key: "lgrow",       label: "EPS growth", sort: r => lynchGrowth(r) ?? -Infinity, numeric: true,
+    tip: "Expected earnings growth per year, implied by P/E ÷ PEG (analyst consensus where Yahoo has it). Lynch: 10-50% - fast enough to matter, not so fast it can't last. Above 50% is rarely sustainable." },
+  { key: "lpeg",        label: "PEG",      sort: r => r.peg ?? Infinity, numeric: true,
+    tip: "P/E ÷ earnings growth - Lynch's signature measure. Under 1 is attractive, under 0.5 very attractive." },
+  { key: "ldpeg",       label: "(G+Y)/PE", sort: r => lynchDpeg(r) ?? -Infinity, numeric: true,
+    tip: "Lynch's dividend-adjusted test: (EPS growth % + dividend yield %) ÷ P/E. Under 1 is poor, 1.5 okay, 2 or more very good. Credits steady dividend payers that PEG alone underrates." },
+  { key: "ldebt",       label: "Debt/equity", sort: r => r.debtEq ?? Infinity, numeric: true,
+    tip: "Total debt ÷ shareholders' equity. Lynch preferred strong balance sheets: under 0.8 here. N/A for banks and insurers, where debt is the raw material of the business." },
+  { key: "linv",        label: "Inventory vs sales", sort: r => (r.invGrowth != null && r.salesGrowth1y != null) ? r.salesGrowth1y - r.invGrowth : -Infinity, numeric: true,
+    tip: "Last year's inventory growth vs sales growth. Lynch warned that inventory piling up faster than sales is a red flag. N/A for companies with no inventory." },
+  { key: "linst",       label: "Institutions", sort: r => r.instPct ?? Infinity, numeric: true,
+    tip: "Share of stock held by institutions. Lynch liked companies the big funds hadn't discovered yet: under 60% here. Few S&P 500 stocks pass - untick the chip to ignore it." },
   { key: "bscore",      label: "Score",    sort: r => 0, numeric: true,
     tip: "Buffett balance-sheet rules passed, out of 5" },
   { key: "bcash",       label: "Cash vs debt", sort: r => (r.cashGtDebt ? 1 : 0), numeric: true,
@@ -388,7 +437,8 @@ const WIDTHS = {
   watch: 34, symbol: 85, name: 0, score: 70, quant: 95, price: 85, fv: 110, wklow: 85, mcap: 90,
   pe: 65, peg: 65, shares: 90, dividend: 110, debt: 125, pfcf: 70, rev: 110,
   roic: 75, wacc: 75, spread: 75, roe: 75, sent: 110, nav: 90, sector: 140,
-  bscore: 70, bcash: 105, bde: 95, bpref: 95, bre: 110, btreas: 95,
+  bscore: 70, lscore: 70, ltype: 115, lgrow: 100, lpeg: 70, ldpeg: 85, ldebt: 105, linv: 145, linst: 110,
+  bcash: 105, bde: 95, bpref: 95, bre: 110, btreas: 95,
 };
 
 const MODES = {
@@ -404,12 +454,17 @@ const MODES = {
     cols: ["watch","symbol","name","bscore","mcap","pe","bcash","bde","bpref","bre","btreas","sector"],
     criteria: BUFFETT, sort: ["bscore", -1],
   },
+  lynch: {
+    cols: ["watch","symbol","name","lscore","ltype","price","fv","mcap","pe","lgrow","lpeg","ldpeg","ldebt","linv","linst","sector"],
+    criteria: LYNCH, sort: ["lscore", -1],
+  },
 };
 
 let mode = "screener";
 const activeSets = {
   screener: new Set(CRITERIA.map(c => c.key)),
   buffett: new Set(BUFFETT.map(c => c.key)),
+  lynch: new Set(LYNCH.map(c => c.key)),
 };
 let activeCriteria = activeSets.screener;
 let sortKey = "score", sortDir = -1;
@@ -603,11 +658,24 @@ function passOf(r, key) {
   if (key === "bpref") return r.hasPref === false;
   if (key === "bre") return r.reGrowing === true;
   if (key === "btreas") return r.hasTreasury === true;
+  if (key === "lpeg") return r.peg > 0 && r.peg < 1;
+  if (key === "ldpeg") { const d = lynchDpeg(r); return d != null && d >= 1.5; }
+  if (key === "lgrow") { const g = lynchGrowth(r); return g != null && g >= 10 && g <= 50; }
+  if (key === "ldebt") return r.debtEq != null && r.debtEq < 0.8;
+  if (key === "linv") return r.invGrowth <= r.salesGrowth1y;
+  if (key === "linst") return r.instPct != null && r.instPct < 60;
   return r.passes[key];
 }
+function criterionNA(r, k) {
+  if (k === "spread") return spreadExempt(r);
+  if (k === "ldebt") return r.sector === "Financial Services" || r.debtEq == null;
+  if (k === "linv") return r.invGrowth == null || r.salesGrowth1y == null;
+  if (k === "linst") return r.instPct == null;
+  return false;
+}
 function applicableCriteria(r) {
-  // N/A criteria (ROIC-based, for banks) don't count for or against the score
-  return [...activeCriteria].filter(k => !(k === "spread" && spreadExempt(r)));
+  // N/A criteria (e.g. ROIC for banks, inventory for service firms) don't count for or against
+  return [...activeCriteria].filter(k => !criterionNA(r, k));
 }
 function effectivePass(r) {
   return applicableCriteria(r).every(k => passOf(r, k));
@@ -619,7 +687,8 @@ function effectiveTotal(r) {
   return applicableCriteria(r).length;
 }
 function scoreRatio(r) {
-  return effectiveCount(r) / Math.max(1, effectiveTotal(r));
+  // ties broken by how many rules were actually tested and passed (6/6 above 4/4)
+  return effectiveCount(r) / Math.max(1, effectiveTotal(r)) + effectiveCount(r) / 1000;
 }
 
 function initFilters() {
@@ -702,8 +771,10 @@ function scoreCell(r) {
   const n = effectiveCount(r), total = effectiveTotal(r);
   const scoreCls = n === total ? "s7" : n >= total - 1 ? "s6" : n >= total - 2 ? "s5" : "slow";
   const exempt = total < activeCriteria.size;
+  const allCrit = [...(MODES[mode].criteria || [])];
+  const naLabels = allCrit.filter(c => activeCriteria.has(c.key) && criterionNA(r, c.key)).map(c => c.label);
   const scoreTitle = exempt
-    ? ` title="ROIC-based criteria are N/A for banks and similar financials (no EBIT), so this stock is scored out of ${total}"`
+    ? ` title="${escAttr("Not applicable or no data for this stock: " + naLabels.join(", ") + ` - so it's scored out of ${total}`)}"`
     : "";
   return `<td${scoreTitle}><span class="score ${scoreCls}">${n}/${total}</span></td>`;
 }
@@ -803,6 +874,16 @@ function fvCell(r) {
   return `<td class="${cls}" title="${escAttr(t)}">${fmtPrice(+r.fv.toPrecision(4), r.currency)}</td>`;
 }
 
+function lynchCell(r, key, text, title) {
+  if (criterionNA(r, key)) {
+    const why = r.sector === "Financial Services" && key === "ldebt" ? "N/A for banks and insurers"
+      : !("debtEq" in r) ? "Not in this data yet - appears after the next data refresh" : "No data / not applicable";
+    return `<td class="na" title="${escAttr(why)}">N/A</td>`;
+  }
+  if (text == null) return `<td class="${activeCriteria.has(key) ? "fail" : "na"}">\u2013</td>`;
+  return critCell(r, key, text, title);
+}
+
 function reTitle(r) {
   const years = Object.keys(r.reYears || {}).sort();
   if (!years.length) return "";
@@ -815,6 +896,18 @@ const CELL = {
   name: r => `<td class="name" title="${escAttr(r.name || "")}">${r.name || ""}</td>`,
   score: scoreCell,
   bscore: scoreCell,
+  lscore: scoreCell,
+  ltype: r => { const t = lynchType(r); return `<td class="na">${t || "\u2013"}</td>`; },
+  lgrow: r => { const g = lynchGrowth(r); return lynchCell(r, "lgrow", g == null ? null : g.toFixed(1) + "%"); },
+  lpeg: r => lynchCell(r, "lpeg", r.peg == null ? null : fmt(r.peg) + (noteFor(r, "peg") ? "*" : ""), noteFor(r, "peg")),
+  ldpeg: r => { const d = lynchDpeg(r), y = lynchYield(r);
+    return lynchCell(r, "ldpeg", d == null ? null : d.toFixed(2),
+      d == null ? "" : `(${lynchGrowth(r).toFixed(1)}% growth + ${y.toFixed(1)}% yield) \u00f7 P/E ${r.pe}`); },
+  ldebt: r => lynchCell(r, "ldebt", r.debtEq == null ? null : r.debtEq.toFixed(2)),
+  linv: r => lynchCell(r, "linv", r.invGrowth == null || r.salesGrowth1y == null ? null
+    : `${r.invGrowth >= 0 ? "+" : ""}${r.invGrowth.toFixed(0)}% vs ${r.salesGrowth1y >= 0 ? "+" : ""}${r.salesGrowth1y.toFixed(0)}%`,
+    "Inventory growth vs sales growth, latest year"),
+  linst: r => lynchCell(r, "linst", r.instPct == null ? null : r.instPct.toFixed(0) + "%"),
   quant: quantCell,
   price: priceCell,
   wklow: r => `<td class="na">${fmtPrice(r.wkLow, r.currency)}</td>`,
@@ -872,7 +965,7 @@ function render() {
   );
 
   const col = COLDEFS[sortKey];
-  const sortVal = r => (sortKey === "score" || sortKey === "bscore") ? scoreRatio(r) : col.sort(r);
+  const sortVal = r => (sortKey === "score" || sortKey === "bscore" || sortKey === "lscore") ? scoreRatio(r) : col.sort(r);
   const bySort = (a, b) => {
     const va = sortVal(a), vb = sortVal(b);
     return (va < vb ? -1 : va > vb ? 1 : 0) * sortDir;

@@ -210,6 +210,21 @@ def dividend_status(ticker):
     return ("growing" if grew else "not_growing"), recent
 
 
+def statement_last_two(df, row_names):
+    """(previous, latest) annual values of the first matching statement row."""
+    try:
+        if df is None or df.empty:
+            return None, None
+        for name in row_names:
+            if name in df.index:
+                row = df.loc[name].dropna().sort_index()
+                if len(row) >= 2:
+                    return float(row.iloc[-2]), float(row.iloc[-1])
+        return None, None
+    except Exception:
+        return None, None
+
+
 def statement_value(df, row_names):
     """Latest annual value of the first matching statement row.
     Returns (value, fiscal_year, row_name)."""
@@ -467,6 +482,18 @@ def screen_ticker(symbol):
                     f"reports no Total Revenue (typical for funds and some financials).")
                 break
 
+    # Peter Lynch inputs
+    debt_eq = info.get("debtToEquity")  # Yahoo reports this as a percentage
+    debt_eq = debt_eq / 100 if debt_eq is not None else (
+        debt / equity if debt is not None and equity and equity > 0 else None)
+    inst = info.get("heldPercentInstitutions")
+    inv_prev, inv_last = statement_last_two(bs, ("Inventory",))
+    rev_prev, rev_last = statement_last_two(inc, ("Total Revenue",))
+    inv_growth = ((inv_last - inv_prev) / inv_prev * 100
+                  if inv_prev and inv_prev > 0 and inv_last is not None else None)
+    sales_growth_1y = ((rev_last - rev_prev) / rev_prev * 100
+                       if rev_prev and rev_prev > 0 and rev_last is not None else None)
+
     passes = {
         "mcap": mcap_usd is not None and mcap_usd > 2e9,
         "pe": pe is not None and 0 < pe < 12,
@@ -514,6 +541,10 @@ def screen_ticker(symbol):
         "roic": round(roic, 1) if roic is not None else None,
         "wacc": round(wacc, 1) if wacc is not None else None,
         "ke": round(ke, 1) if ke is not None else None,  # cost of equity (CAPM)
+        "debtEq": round(debt_eq, 2) if debt_eq is not None else None,
+        "instPct": round(inst * 100, 1) if inst is not None else None,
+        "invGrowth": round(inv_growth, 1) if inv_growth is not None else None,
+        "salesGrowth1y": round(sales_growth_1y, 1) if sales_growth_1y is not None else None,
         "roce": round(roce, 1) if roce is not None else None,
         "roe": round(roe * 100, 1) if roe is not None else None,
         "passes": passes,

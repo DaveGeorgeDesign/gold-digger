@@ -6,6 +6,13 @@ stocks, in three tabs:
 - **Screener** - operating companies against the 9 value criteria below
 - **Investment Trusts** - closed-end trusts only, sorted by NAV discount
   (trusts pass value screens artificially, so they live separately)
+- **Peter Lynch** - 6 rules from *One Up on Wall Street*: PEG under 1,
+  (EPS growth + dividend yield) ÷ P/E of at least 1.5, EPS growth 10-50%/yr,
+  debt/equity under 0.8, inventory not growing faster than sales, and
+  institutional ownership under 60%. Rules that don't apply (debt for
+  financials, inventory for companies that hold none) are N/A, not fails.
+  Each stock is also tagged with Lynch's category (slow grower, stalwart,
+  fast grower, cyclical, turnaround).
 - **Buffett** - a 5-rule balance-sheet check: more cash than borrowings,
   liabilities/equity under 0.8, no preferred stock, retained earnings growing
   every year, and treasury stock held
